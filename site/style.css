@@ -115,6 +115,19 @@ body { display: flex; flex-direction: column; }
 
 .leaflet-tooltip.base-label { font-weight: 700; font-size: 13px; z-index: 1; }
 
+/* Logo pins (images from site/logos) */
+.logo-pin {
+  width: 100%;
+  height: 100%;
+  border: 2.5px solid #8c8c8c;
+  border-radius: 50%;
+  background: #fff;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+.logo-pin img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.popup .logo { display: block; max-width: 120px; max-height: 48px; margin-bottom: 6px; }
+
 /* Base point marker */
 .base-marker {
   width: 22px;

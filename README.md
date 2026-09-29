@@ -13,6 +13,7 @@ The map has these controls:
 - **Search:** filters pins by name, type or address.
 - **Legend:** the 10 most common types within the chosen radius get their own colour, and the rest are grouped as "Other types". Untick a type to hide it.
 - **Base map:** the layers button under the zoom controls switches between Street (OpenStreetMap), Street (Esri) and Satellite (Esri). None of these needs an API key. The page remembers the last choice, and if a map's tiles fail to load it switches to the next one automatically.
+- **Logo pins:** a place whose logo is in `site/logos/` shows it as its pin, framed in the type colour. See [`site/logos/README.md`](site/logos/README.md) for how to name the files and customise the placeholder.
 - **Popups:** clicking a pin shows its type, address, rating, distance from the base point and a Google Maps link.
 
 ## Updating the data
