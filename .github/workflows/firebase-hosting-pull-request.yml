@@ -1,0 +1,49 @@
+# Builds the map on every pull request and, once Firebase is set up, deploys a
+# temporary preview (the preview link is posted as a comment on the PR).
+name: Firebase preview
+
+on: pull_request
+
+permissions:
+  checks: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  build_and_preview:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Build map data from spreadsheets
+        run: |
+          pip install -r requirements.txt
+          python build_map_data.py
+
+      - name: Check Firebase setup
+        id: firebase
+        env:
+          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          project=$(python -c "import json; print(json.load(open('.firebaserc'))['projects']['default'])")
+          if [ -z "$SERVICE_ACCOUNT" ] || [ "$project" = "your-firebase-project-id" ]; then
+            echo "::notice::Firebase is not set up yet (see README), so no preview was deployed."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "project=$project" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        if: steps.firebase.outputs.ready == 'true'
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: ${{ steps.firebase.outputs.project }}
+          expires: 7d

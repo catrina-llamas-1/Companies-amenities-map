@@ -45,6 +45,18 @@ body { display: flex; flex-direction: column; }
 .tabs button + button { border-left: 1px solid var(--border); }
 .tabs button[aria-selected="true"] { background: var(--accent); color: #fff; }
 
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.controls select, .controls input[type="search"] {
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+}
+.controls input[type="search"] { width: 190px; }
+
 .toggle { font-size: 14px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
 
 #map { flex: 1; min-height: 0; }
@@ -65,7 +77,13 @@ body { display: flex; flex-direction: column; }
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   font-size: 13px;
 }
-.legend h2 { font-size: 13px; margin: 0 0 6px; }
+.legend summary { font-weight: 700; cursor: pointer; display: flex; gap: 8px; }
+.legend summary::-webkit-details-marker { display: none; }
+.legend summary::before { content: "▾"; color: var(--muted); }
+.legend details:not([open]) summary::before { content: "▸"; }
+.legend details[open] summary { margin-bottom: 6px; }
+.legend summary .count { font-weight: 400; }
+.legend .hint { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
 .legend label { display: flex; align-items: center; gap: 6px; padding: 2px 0; cursor: pointer; }
 .legend .count { color: var(--muted); margin-left: auto; padding-left: 8px; }
 .swatch {
@@ -85,13 +103,17 @@ body { display: flex; flex-direction: column; }
   font-size: 12px;
   line-height: 1.25;
   border-radius: 4px;
+  font-weight: 600;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 }
-.pin-label .name { font-weight: 600; }
-.pin-label .type { color: var(--muted); }
-.hide-labels .leaflet-tooltip.pin-label.permanent { display: none; }
+.pin-label .name {
+  display: block;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
-.leaflet-tooltip.base-label { font-weight: 700; font-size: 13px; }
+.leaflet-tooltip.base-label { font-weight: 700; font-size: 13px; z-index: 1; }
 
 /* Base point marker */
 .base-marker {
@@ -112,5 +134,6 @@ body { display: flex; flex-direction: column; }
 
 @media (max-width: 600px) {
   .topbar h1 { width: 100%; font-size: 15px; }
+  .controls input[type="search"] { width: 150px; }
   .legend { right: 8px; bottom: 20px; min-width: 150px; max-height: 35vh; }
 }

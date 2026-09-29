@@ -3,8 +3,8 @@
   "base": {
     "name": "21350 Stony Plain Rd",
     "address": "21350 Stony Plain Rd NW, Edmonton, AB",
-    "lat": 53.5418,
-    "lon": -113.6995
+    "lat": 53.5416,
+    "lon": -113.6860
   },
   "views": {
     "companies": {
@@ -16,5 +16,7 @@
       "input": "data/area_amenities"
     }
   },
-  "geocode_suffix": "Edmonton, AB, Canada"
+  "max_distance_km": 50,
+  "radius_options_km": [1, 2.5, 5, 10, 25, 50],
+  "default_radius_km": 2.5
 }

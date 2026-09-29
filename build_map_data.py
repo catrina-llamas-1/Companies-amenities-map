@@ -2,41 +2,39 @@
 # Reads the two input spreadsheets (industrial companies, area amenities) and
 # writes site/data/map_data.json, which the web map loads.
 #
-# Usage:  pip install pandas openpyxl requests
+# Usage:  pip install pandas openpyxl
 #         python build_map_data.py
 #
-# Each spreadsheet needs a Name and a Type column, plus either Latitude/Longitude
-# columns or an Address column. Rows with an address but no coordinates are
-# geocoded with OpenStreetMap Nominatim; results are cached in
-# data/geocode_cache.json so each address is only looked up once.
+# Each spreadsheet needs Name, Type, Lat and Lng columns (Address, Rating,
+# Reviews and URL are used when present). Every sheet in a workbook is read and
+# duplicate rows (same name and coordinates) are merged. Rows without
+# coordinates, or farther than max_distance_km from the base point, are skipped.
 
 import json
+import math
+import re
 import sys
-import time
 from pathlib import Path
 
 import pandas as pd
-import requests
 
 ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = ROOT / "config.json"
-CACHE_PATH = ROOT / "data" / "geocode_cache.json"
 OUTPUT_PATH = ROOT / "site" / "data" / "map_data.json"
-
-NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-USER_AGENT = "companies-amenities-map/1.0 (github.com/catrina-llamas-1/companies-amenities-map)"
 SPREADSHEET_EXTENSIONS = [".xlsx", ".xls", ".csv"]
 
 # Accepted header spellings (compared lower-case, ignoring spaces/underscores)
 COLUMN_ALIASES = {
-    "name": ["name", "companyname", "company", "businessname", "business",
-             "amenityname", "amenity", "placename", "place"],
-    "type": ["type", "category", "industry", "amenitytype", "companytype",
-             "businesstype", "sector", "kind"],
-    "address": ["address", "streetaddress", "fulladdress", "location"],
-    "lat": ["lat", "latitude", "y"],
-    "lon": ["lon", "lng", "long", "longitude", "x"],
+    "name": ["name", "companyname", "company", "businessname", "amenityname", "placename"],
+    "type": ["type", "category", "industry", "amenitytype", "companytype", "businesstype"],
+    "lat": ["lat", "latitude"],
+    "lon": ["lng", "lon", "long", "longitude"],
+    "address": ["address", "streetaddress", "fulladdress"],
+    "rating": ["rating"],
+    "reviews": ["reviews", "reviewcount"],
+    "url": ["url", "link", "mapsurl"],
 }
+REQUIRED = ["name", "type", "lat", "lon"]
 
 # ── 1: READ SPREADSHEETS ─────────────────────────────────────────────────────
 
@@ -53,19 +51,18 @@ def find_input(stem):
     return matches[0]
 
 
-def read_sheet(path):
+def read_sheets(path):
+    """Return {sheet name: DataFrame} for every sheet in the file."""
     if path.suffix == ".csv":
-        df = pd.read_csv(path, dtype=str, keep_default_na=False)
-    else:
-        df = pd.read_excel(path, dtype=str, keep_default_na=False)
-    return df
+        return {path.stem: pd.read_csv(path, dtype=str, keep_default_na=False)}
+    return pd.read_excel(path, sheet_name=None, dtype=str, keep_default_na=False)
 
 
 def normalize(header):
     return "".join(ch for ch in str(header).lower() if ch.isalnum())
 
 
-def map_columns(df, path):
+def map_columns(df, where):
     """Map our field names (name, type, ...) to the sheet's actual headers."""
     by_norm = {normalize(c): c for c in df.columns}
     mapping = {}
@@ -74,105 +71,96 @@ def map_columns(df, path):
             if alias in by_norm:
                 mapping[field] = by_norm[alias]
                 break
-    missing = [f for f in ("name", "type") if f not in mapping]
+    missing = [f for f in REQUIRED if f not in mapping]
     if missing:
-        sys.exit(f"ERROR: {path.name} has no {' / '.join(missing)} column. "
+        sys.exit(f"ERROR: {where} is missing column(s): {', '.join(missing)}. "
                  f"Headers found: {list(df.columns)}")
-    has_coords = "lat" in mapping and "lon" in mapping
-    if not has_coords and "address" not in mapping:
-        sys.exit(f"ERROR: {path.name} needs Latitude/Longitude columns "
-                 f"or an Address column. Headers found: {list(df.columns)}")
     return mapping
 
-# ── 2: GEOCODING ─────────────────────────────────────────────────────────────
-
-def load_cache():
-    if CACHE_PATH.exists():
-        return json.loads(CACHE_PATH.read_text())
-    return {}
-
-
-def save_cache(cache):
-    CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CACHE_PATH.write_text(json.dumps(cache, indent=2, sort_keys=True) + "\n")
-
-
-def geocode(address, suffix, cache):
-    query = f"{address}, {suffix}" if suffix and suffix.lower() not in address.lower() else address
-    if query in cache:
-        return cache[query]
-    time.sleep(1.1)  # Nominatim usage policy: max 1 request per second
-    try:
-        r = requests.get(NOMINATIM_URL,
-                         params={"q": query, "format": "json", "limit": 1},
-                         headers={"User-Agent": USER_AGENT}, timeout=30)
-        r.raise_for_status()
-        hits = r.json()
-    except Exception as e:
-        print(f"  ! geocoding failed for '{query}': {e}")
-        return None  # not cached, so it is retried next run
-    result = [float(hits[0]["lat"]), float(hits[0]["lon"])] if hits else None
-    cache[query] = result
-    return result
-
+# ── 2: HELPERS ───────────────────────────────────────────────────────────────
 
 def to_float(value):
     try:
-        return float(str(value).strip())
+        f = float(str(value).strip())
     except ValueError:
         return None
+    return f if math.isfinite(f) else None
+
+
+def distance_km(lat1, lon1, lat2, lon2):
+    rad = math.pi / 180
+    h = (math.sin((lat2 - lat1) * rad / 2) ** 2 + math.cos(lat1 * rad) * math.cos(lat2 * rad)
+         * math.sin((lon2 - lon1) * rad / 2) ** 2)
+    return 2 * 6371 * math.asin(math.sqrt(h))
 
 # ── 3: BUILD ─────────────────────────────────────────────────────────────────
 
-def build_view(key, view_cfg, suffix, cache):
+def build_view(view_cfg, base, max_km):
     path = find_input(view_cfg["input"])
-    df = read_sheet(path)
-    cols = map_columns(df, path)
-    print(f"{view_cfg['label']}: {path.name} ({len(df)} rows)")
+    points, seen = [], set()
+    no_coords, too_far, dupes = [], [], 0
 
-    points, skipped = [], []
-    for i, row in df.iterrows():
-        name = str(row[cols["name"]]).strip()
-        if not name:
-            continue
-        type_ = str(row[cols["type"]]).strip() or "Other"
-        address = str(row[cols["address"]]).strip() if "address" in cols else ""
+    for sheet, df in read_sheets(path).items():
+        cols = map_columns(df, f"{path.name} / sheet '{sheet}'")
+        get = lambda row, field: str(row[cols[field]]).strip() if field in cols else ""
+        for i, row in df.iterrows():
+            name = get(row, "name")
+            if not name:
+                continue
+            lat, lon = to_float(get(row, "lat")), to_float(get(row, "lon"))
+            if lat is None or lon is None:
+                # Name left out of the log: stray rows here can hold personal data
+                no_coords.append(f"'{sheet}' row {i + 2}")
+                continue
+            where = f"'{sheet}' row {i + 2}: {name}"
+            key = (name.lower(), round(lat, 5), round(lon, 5))
+            if key in seen:
+                dupes += 1
+                continue
+            seen.add(key)
+            km = distance_km(base["lat"], base["lon"], lat, lon)
+            if km > max_km:
+                too_far.append(f"{where} ({km:,.0f} km away)")
+                continue
 
-        lat = to_float(row[cols["lat"]]) if "lat" in cols else None
-        lon = to_float(row[cols["lon"]]) if "lon" in cols else None
-        if (lat is None or lon is None) and address:
-            coords = geocode(address, suffix, cache)
-            if coords:
-                lat, lon = coords
-        if lat is None or lon is None:
-            skipped.append(f"row {i + 2}: {name}")
-            continue
-        points.append({"name": name, "type": type_, "address": address,
-                       "lat": round(lat, 6), "lon": round(lon, 6)})
+            url = get(row, "url")
+            point = {"name": name, "type": get(row, "type") or "Unspecified",
+                     "address": get(row, "address"), "lat": round(lat, 6),
+                     "lon": round(lon, 6), "km": round(km, 2)}
+            rating, reviews = to_float(get(row, "rating")), to_float(get(row, "reviews"))
+            if rating is not None:
+                point["rating"] = rating
+            if reviews is not None:
+                point["reviews"] = int(reviews)
+            place_id = re.search(r"!19s(ChIJ[\w-]+)", url)
+            if place_id:
+                point["place_id"] = place_id.group(1)
+            points.append(point)
 
-    print(f"  {len(points)} pins placed")
-    for s in skipped:
-        print(f"  ! skipped (no coordinates, address not found) — {s}")
-    return {"label": view_cfg["label"], "points": points}, skipped
+    points.sort(key=lambda p: p["km"])
+    print(f"{view_cfg['label']}: {path.name} -> {len(points)} pins "
+          f"({dupes} duplicates merged)")
+    for label, rows in (("no coordinates", no_coords),
+                        (f"more than {max_km:g} km from base", too_far)):
+        if rows:
+            print(f"  skipped {len(rows)} row(s) with {label}:")
+            for r in rows:
+                print(f"    - {r}")
+    return {"label": view_cfg["label"], "points": points}
 
 
 def main():
     config = json.loads(CONFIG_PATH.read_text())
-    cache = load_cache()
-    suffix = config.get("geocode_suffix", "")
+    base = config["base"]
+    views = {key: build_view(cfg, base, config["max_distance_km"])
+             for key, cfg in config["views"].items()}
 
-    views, all_skipped = {}, []
-    for key, view_cfg in config["views"].items():
-        views[key], skipped = build_view(key, view_cfg, suffix, cache)
-        all_skipped += skipped
-    save_cache(cache)
-
-    data = {"title": config["title"], "base": config["base"], "views": views}
+    data = {"title": config["title"], "base": base,
+            "radius_options_km": config["radius_options_km"],
+            "default_radius_km": config["default_radius_km"], "views": views}
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT_PATH.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    OUTPUT_PATH.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n")
     print(f"Wrote {OUTPUT_PATH.relative_to(ROOT)}")
-    if all_skipped:
-        print(f"WARNING: {len(all_skipped)} row(s) could not be placed on the map")
 
 
 if __name__ == "__main__":

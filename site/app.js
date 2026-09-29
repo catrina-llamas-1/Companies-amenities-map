@@ -3,10 +3,15 @@
 
 const PALETTE = [
   "#1f77b4", "#d62728", "#2ca02c", "#ff7f0e", "#9467bd",
-  "#8c564b", "#e377c2", "#17becf", "#bcbd22", "#7f7f7f",
+  "#8c564b", "#e377c2", "#17becf", "#bcbd22", "#393b79",
 ];
+const OTHER_COLOR = "#8c8c8c";
+const OTHER = "Other types";
+const LABEL_MIN_ZOOM = 15;   // from this zoom, label every pin on screen...
+const FEW_PINS = 60;         // ...below it, only when this few pins are on screen
+const MAX_LABELS = 250;      // cap on labels drawn at once
 
-const map = L.map("map", { zoomControl: true });
+const map = L.map("map", { preferCanvas: true });
 L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
   maxZoom: 20,
   subdomains: "abcd",
@@ -14,29 +19,20 @@ L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r
                'contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
 }).addTo(map);
 
-const state = { data: null, view: null, layers: {}, hiddenTypes: {} };
+const state = {
+  data: null, view: null, views: {}, radiusKm: null, query: "",
+  pinLayer: L.layerGroup().addTo(map), labelLayer: L.layerGroup().addTo(map),
+  radiusCircle: null,
+};
+const $ = (id) => document.getElementById(id);
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
     { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-function distanceKm(a, b) {
-  const R = 6371, rad = Math.PI / 180;
-  const dLat = (b.lat - a.lat) * rad, dLon = (b.lon - a.lon) * rad;
-  const h = Math.sin(dLat / 2) ** 2 +
-            Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
-
-function typeColors(points) {
-  // Most common types get the first palette colours
-  const counts = {};
-  points.forEach((p) => { counts[p.type] = (counts[p.type] || 0) + 1; });
-  const types = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || a.localeCompare(b));
-  const colors = {};
-  types.forEach((t, i) => { colors[t] = PALETTE[i % PALETTE.length]; });
-  return { types, counts, colors };
+function formatKm(km) {
+  return km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
 }
 
 // ── Base point (shared by both views) ────────────────────────────────────────
@@ -50,82 +46,148 @@ function addBase(base) {
     .bindPopup(`<div class="popup"><h3>${escapeHtml(base.name)}</h3>` +
                `<p class="muted">Base point</p><p>${escapeHtml(base.address || "")}</p></div>`)
     .addTo(map);
+  state.radiusCircle = L.circle([base.lat, base.lon], {
+    radius: 1, color: "#111", weight: 1.5, dashArray: "6 6", fill: false, interactive: false,
+  }).addTo(map);
 }
 
-// ── One layer group per view ─────────────────────────────────────────────────
+// ── Per-view setup: colours by type, one marker per point ────────────────────
 
-function buildViewLayer(key, view, base) {
-  const { types, counts, colors } = typeColors(view.points);
-  const byType = {};
-  types.forEach((t) => { byType[t] = L.layerGroup(); });
+function popupHtml(p) {
+  const base = state.data.base;
+  const rating = p.rating != null
+    ? `<p>★ ${p.rating.toFixed(1)}${p.reviews != null ? ` (${p.reviews.toLocaleString()} reviews)` : ""}</p>`
+    : "";
+  const link = p.place_id
+    ? `<p><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.name)}` +
+      `&query_place_id=${encodeURIComponent(p.place_id)}" target="_blank" rel="noopener">` +
+      `Open in Google Maps</a></p>`
+    : "";
+  return `<div class="popup"><h3>${escapeHtml(p.name)}</h3>` +
+         `<p class="muted">${escapeHtml(p.type)}</p>` +
+         (p.address ? `<p>${escapeHtml(p.address)}</p>` : "") + rating +
+         `<p class="muted">${formatKm(p.km)} from ${escapeHtml(base.name)}</p>${link}</div>`;
+}
 
-  view.points.forEach((p) => {
-    const label = `<span class="name">${escapeHtml(p.name)}</span><br>` +
-                  `<span class="type">${escapeHtml(p.type)}</span>`;
-    const km = distanceKm(base, p).toFixed(1);
-    const popup = `<div class="popup"><h3>${escapeHtml(p.name)}</h3>` +
-                  `<p class="muted">${escapeHtml(p.type)}</p>` +
-                  (p.address ? `<p>${escapeHtml(p.address)}</p>` : "") +
-                  `<p class="muted">${km} km from ${escapeHtml(base.name)}</p></div>`;
-    L.circleMarker([p.lat, p.lon], {
-      radius: 8, color: "#fff", weight: 2, fillColor: colors[p.type], fillOpacity: 0.95,
-    })
-      .bindTooltip(label, { permanent: true, direction: "top", offset: [0, -8],
-                            className: "pin-label permanent" })
-      .bindPopup(popup)
-      .addTo(byType[p.type]);
+function setupView(key, view) {
+  const items = view.points.map((p) => ({
+    p,
+    group: OTHER,
+    search: `${p.name} ${p.type} ${p.address}`.toLowerCase(),
+    marker: L.circleMarker([p.lat, p.lon], {
+      radius: 7, color: "#fff", weight: 1.5, fillColor: OTHER_COLOR, fillOpacity: 0.9,
+    }).bindPopup(() => popupHtml(p)),
+  }));
+  items.forEach((it) => it.marker.bindTooltip(`<span class="name">${escapeHtml(it.p.name)}</span>`,
+    { direction: "top", offset: [0, -6], className: "pin-label" }));
+  state.views[key] = { items, groups: [], colors: {}, counts: {}, hidden: new Set() };
+}
+
+// The most common types within the current radius get their own colour,
+// the rest share grey as "Other types"
+function assignColors() {
+  const v = state.views[state.view];
+  const inRange = v.items.filter((it) => it.p.km <= state.radiusKm);
+  const typeCounts = {};
+  inRange.forEach((it) => { typeCounts[it.p.type] = (typeCounts[it.p.type] || 0) + 1; });
+  const top = Object.keys(typeCounts)
+    .sort((a, b) => typeCounts[b] - typeCounts[a] || a.localeCompare(b))
+    .slice(0, PALETTE.length);
+  v.colors = Object.fromEntries(top.map((t, i) => [t, PALETTE[i]]));
+  v.colors[OTHER] = OTHER_COLOR;
+
+  v.counts = {};
+  v.items.forEach((it) => {
+    it.group = it.p.type in v.colors ? it.p.type : OTHER;
+    it.marker.setStyle({ fillColor: v.colors[it.group] });
   });
-
-  state.hiddenTypes[key] = new Set();
-  return { types, counts, colors, byType };
+  inRange.forEach((it) => { v.counts[it.group] = (v.counts[it.group] || 0) + 1; });
+  v.groups = v.counts[OTHER] ? [...top, OTHER] : top;
 }
 
-function renderLegend(key) {
-  const view = state.data.views[key];
-  const layer = state.layers[key];
-  const hidden = state.hiddenTypes[key];
-  const legend = document.getElementById("legend");
-  legend.innerHTML =
-    `<h2>${escapeHtml(view.label)} (${view.points.length})</h2>` +
-    `<label><span class="swatch base"></span>${escapeHtml(state.data.base.name)}</label>` +
-    layer.types.map((t, i) =>
-      `<label><input type="checkbox" data-i="${i}" ${hidden.has(t) ? "" : "checked"}>` +
-      `<span class="swatch" style="background:${layer.colors[t]}"></span>${escapeHtml(t)}` +
-      `<span class="count">${layer.counts[t]}</span></label>`).join("");
+// ── Filtering and drawing ────────────────────────────────────────────────────
 
-  legend.querySelectorAll("input[data-i]").forEach((box) => {
+function visibleItems() {
+  const v = state.views[state.view];
+  const q = state.query;
+  return v.items.filter((it) =>
+    it.p.km <= state.radiusKm && !v.hidden.has(it.group) && (!q || it.search.includes(q)));
+}
+
+function draw() {
+  state.pinLayer.clearLayers();
+  const shown = visibleItems();
+  shown.forEach((it) => state.pinLayer.addLayer(it.marker));
+  state.shown = shown;
+  $("count").textContent = `${shown.length.toLocaleString()} shown`;
+  renderLegend();
+  drawLabels();
+}
+
+// Permanent name labels for pins on screen, when they would not bury the map
+function drawLabels() {
+  state.labelLayer.clearLayers();
+  if (!$("show-labels").checked || !state.shown) return;
+  const bounds = map.getBounds();
+  const onScreen = state.shown.filter((it) => bounds.contains(it.marker.getLatLng()));
+  if (onScreen.length > FEW_PINS && map.getZoom() < LABEL_MIN_ZOOM) return;
+  onScreen
+    .slice(0, MAX_LABELS)
+    .forEach((it) => {
+      L.tooltip({ permanent: true, direction: "top", offset: [0, -6],
+                  className: "pin-label", interactive: false })
+        .setLatLng(it.marker.getLatLng())
+        .setContent(`<span class="name">${escapeHtml(it.p.name)}</span>`)
+        .addTo(state.labelLayer);
+    });
+}
+
+function renderLegend() {
+  const v = state.views[state.view];
+  $("legend-items").innerHTML =
+    `<label><span class="swatch base"></span>${escapeHtml(state.data.base.name)}</label>` +
+    v.groups.map((g, i) =>
+      `<label><input type="checkbox" data-i="${i}" ${v.hidden.has(g) ? "" : "checked"}>` +
+      `<span class="swatch" style="background:${v.colors[g]}"></span>${escapeHtml(g)}` +
+      `<span class="count">${v.counts[g]}</span></label>`).join("");
+
+  $("legend-items").querySelectorAll("input[data-i]").forEach((box) => {
     box.addEventListener("change", () => {
-      const t = layer.types[Number(box.dataset.i)];
-      if (box.checked) { hidden.delete(t); layer.byType[t].addTo(map); }
-      else { hidden.add(t); map.removeLayer(layer.byType[t]); }
+      const g = v.groups[Number(box.dataset.i)];
+      if (box.checked) v.hidden.delete(g); else v.hidden.add(g);
+      draw();
     });
   });
 }
 
-function showView(key, fit = true) {
-  if (!state.data.views[key]) key = Object.keys(state.data.views)[0];
-  if (state.view) {
-    Object.values(state.layers[state.view].byType).forEach((g) => map.removeLayer(g));
-  }
-  state.view = key;
-  const layer = state.layers[key];
-  layer.types.forEach((t) => {
-    if (!state.hiddenTypes[key].has(t)) layer.byType[t].addTo(map);
-  });
+function fitToRadius() {
+  // Computed from the base point: the circle has no bounds until the map has a view
+  const { lat, lon } = state.data.base;
+  map.fitBounds(L.latLng(lat, lon).toBounds(state.radiusKm * 2000), { padding: [20, 20] });
+}
 
+function setRadius(km, fit = true) {
+  state.radiusKm = km;
+  state.radiusCircle.setRadius(km * 1000);
+  if (fit) fitToRadius();
+  assignColors();
+  draw();
+}
+
+function showView(key) {
+  if (!state.views[key]) key = Object.keys(state.views)[0];
+  state.view = key;
+  map.closePopup();
   document.querySelectorAll("#tabs button").forEach((b) => {
     b.setAttribute("aria-selected", String(b.dataset.view === key));
   });
-  renderLegend(key);
+  $("legend-title").textContent = state.data.views[key].label;
   if (location.hash !== `#${key}`) history.replaceState(null, "", `#${key}`);
-
-  if (fit) {
-    const base = state.data.base;
-    const pts = state.data.views[key].points.map((p) => [p.lat, p.lon]);
-    const bounds = L.latLngBounds([[base.lat, base.lon], ...pts]);
-    map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
-  }
+  assignColors();
+  draw();
 }
+
+// ── Start-up ─────────────────────────────────────────────────────────────────
 
 async function init() {
   let data;
@@ -134,33 +196,44 @@ async function init() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     data = await res.json();
   } catch (e) {
-    document.getElementById("map").innerHTML =
+    $("map").innerHTML =
       `<p class="error">Could not load data/map_data.json (${escapeHtml(e.message)}).</p>`;
     return;
   }
   state.data = data;
   document.title = data.title;
-  document.getElementById("title").textContent = data.title;
+  $("title").textContent = data.title;
 
   addBase(data.base);
-  const tabs = document.getElementById("tabs");
   Object.entries(data.views).forEach(([key, view]) => {
-    state.layers[key] = buildViewLayer(key, view, data.base);
+    setupView(key, view);
     const btn = document.createElement("button");
     btn.type = "button";
     btn.role = "tab";
     btn.dataset.view = key;
     btn.textContent = view.label;
     btn.addEventListener("click", () => showView(key));
-    tabs.appendChild(btn);
+    $("tabs").appendChild(btn);
   });
 
-  const labelsBox = document.getElementById("show-labels");
-  labelsBox.addEventListener("change", () => {
-    document.body.classList.toggle("hide-labels", !labelsBox.checked);
+  const radius = $("radius");
+  data.radius_options_km.forEach((km) => {
+    radius.add(new Option(`Within ${km} km`, km, false, km === data.default_radius_km));
   });
+  radius.addEventListener("change", () => setRadius(Number(radius.value)));
 
+  let timer;
+  $("search").addEventListener("input", (e) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { state.query = e.target.value.trim().toLowerCase(); draw(); }, 150);
+  });
+  $("show-labels").addEventListener("change", drawLabels);
+  if (window.matchMedia("(max-width: 600px)").matches) $("legend-box").open = false;
+  map.on("moveend", drawLabels);
   window.addEventListener("hashchange", () => showView(location.hash.slice(1)));
+
+  state.view = Object.keys(state.views)[0];
+  setRadius(data.default_radius_km);
   showView(location.hash.slice(1));
 }
 

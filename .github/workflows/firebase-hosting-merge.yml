@@ -1,0 +1,47 @@
+# Builds the map from the spreadsheets and deploys it to Firebase Hosting (live)
+# on every push to main. Needs the FIREBASE_SERVICE_ACCOUNT repository secret
+# and the project ID in .firebaserc; until both are set, it only builds.
+name: Deploy to Firebase Hosting
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Build map data from spreadsheets
+        run: |
+          pip install -r requirements.txt
+          python build_map_data.py
+
+      - name: Check Firebase setup
+        id: firebase
+        env:
+          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          project=$(python -c "import json; print(json.load(open('.firebaserc'))['projects']['default'])")
+          if [ -z "$SERVICE_ACCOUNT" ] || [ "$project" = "your-firebase-project-id" ]; then
+            echo "::warning::Firebase is not set up yet (see README), so the map was built but not deployed."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "project=$project" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        if: steps.firebase.outputs.ready == 'true'
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: ${{ steps.firebase.outputs.project }}
+          channelId: live
