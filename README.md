@@ -12,6 +12,7 @@ The map has these controls:
 - **Distance:** the drop-down limits pins to a radius around the base point (1–50 km, default 2.5 km) and draws that radius as a dashed circle.
 - **Search:** filters pins by name, type or address.
 - **Legend:** the 10 most common types within the chosen radius get their own colour, and the rest are grouped as "Other types". Untick a type to hide it.
+- **Base map:** the layers button under the zoom controls switches between Street (OpenStreetMap), Street (Esri) and Satellite (Esri). None of these needs an API key. The page remembers the last choice, and if a map's tiles fail to load it switches to the next one automatically.
 - **Popups:** clicking a pin shows its type, address, rating, distance from the base point and a Google Maps link.
 
 ## Updating the data

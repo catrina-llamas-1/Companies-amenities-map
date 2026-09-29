@@ -11,13 +11,59 @@ const LABEL_MIN_ZOOM = 15;   // from this zoom, label every pin on screen...
 const FEW_PINS = 60;         // ...below it, only when this few pins are on screen
 const MAX_LABELS = 250;      // cap on labels drawn at once
 
-const map = L.map("map", { preferCanvas: true });
-L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-  maxZoom: 20,
-  subdomains: "abcd",
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> ' +
-               'contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-}).addTo(map);
+const map = L.map("map", { preferCanvas: true, maxZoom: 20 });
+
+// Base maps that need no API key. The first is the default; if a map's tiles
+// fail to load, the next one is tried automatically.
+const OSM_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+const BASEMAPS = {
+  "Street (OpenStreetMap)": L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxNativeZoom: 19, maxZoom: 20, attribution: OSM_ATTRIBUTION,
+  }),
+  "Street (Esri)": L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", {
+      maxNativeZoom: 19, maxZoom: 20,
+      attribution: "Tiles &copy; Esri &mdash; Source: Esri, HERE, Garmin, USGS, NGA, and the GIS User Community",
+    }),
+  "Satellite (Esri)": L.tileLayer(
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+      maxNativeZoom: 19, maxZoom: 20,
+      attribution: "Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community",
+    }),
+};
+const BASEMAP_KEY = "basemap";
+
+function useBasemap(name) {
+  Object.values(BASEMAPS).forEach((layer) => map.removeLayer(layer));
+  BASEMAPS[name].addTo(map);
+}
+
+function setupBasemaps() {
+  const names = Object.keys(BASEMAPS);
+  let saved = null;
+  try { saved = localStorage.getItem(BASEMAP_KEY); } catch (e) { /* storage unavailable */ }
+  useBasemap(names.includes(saved) ? saved : names[0]);
+  L.control.layers(BASEMAPS, null, { position: "topleft" }).addTo(map);
+
+  map.on("baselayerchange", (e) => {
+    try { localStorage.setItem(BASEMAP_KEY, e.name); } catch (err) { /* ignore */ }
+  });
+
+  // Fallback: a map whose first tiles all fail is swapped for the next one
+  names.forEach((name, i) => {
+    const layer = BASEMAPS[name];
+    let loaded = false, errors = 0;
+    layer.on("tileload", () => { loaded = true; });
+    layer.on("tileerror", () => {
+      errors += 1;
+      if (loaded || errors < 4 || i === names.length - 1 || !map.hasLayer(layer)) return;
+      console.warn(`Base map "${name}" is unavailable, switching to "${names[i + 1]}"`);
+      useBasemap(names[i + 1]);
+    });
+  });
+}
+setupBasemaps();
 
 const state = {
   data: null, view: null, views: {}, radiusKm: null, query: "",
