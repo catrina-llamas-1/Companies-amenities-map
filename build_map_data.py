@@ -128,12 +128,13 @@ def download_boundary(base):
     """Find the Corporate Boundary dataset on data.edmonton.ca and download it."""
     query = urllib.parse.urlencode({"q": BOUNDARY_SEARCH, "only": "datasets,maps", "limit": 20})
     results = fetch_json(f"{OPEN_DATA}/api/catalog/v1?{query}")["results"]
-    ids = []
+    ids, names = [], {}
     for r in results:
         name = r["resource"]["name"]
         if "corporate boundary" in name.lower():
-            ids.append(r["resource"]["id"])
-            ids.extend(r["resource"].get("parent_fxf") or [])
+            for dataset_id in [r["resource"]["id"], *(r["resource"].get("parent_fxf") or [])]:
+                ids.append(dataset_id)
+                names.setdefault(dataset_id, name)
     if not ids:
         raise RuntimeError(f"no 'Corporate Boundary' dataset found on {OPEN_DATA}")
 
@@ -147,9 +148,12 @@ def download_boundary(base):
                 continue
             polygons = boundary_polygons(geojson)
             if polygons and point_in_polygons(base["lon"], base["lat"], polygons):
-                print(f"  downloaded city boundary from {url}")
+                lons = [x for rings in polygons for x, _ in rings[0]]
+                lats = [y for rings in polygons for _, y in rings[0]]
+                print(f"  downloaded '{names[dataset_id]}' from {url}: {len(polygons)} polygon(s), "
+                      f"lat {min(lats):.3f}..{max(lats):.3f}, lon {min(lons):.3f}..{max(lons):.3f}")
                 return geojson
-            print(f"  (tried {url}: not a boundary containing the base point)")
+            print(f"  (skipped '{names[dataset_id]}' at {url}: no polygon containing the base point)")
     raise RuntimeError("could not download a usable boundary")
 
 
