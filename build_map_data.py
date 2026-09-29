@@ -10,6 +10,8 @@
 # duplicate rows (same name and coordinates) are merged. Only places inside the
 # City of Edmonton boundary are kept; the boundary is downloaded from the City's
 # open data portal on first run and saved to data/edmonton_boundary.geojson.
+# A place gets a logo pin when site/logos holds an image named after it, or
+# when an optional Logo column names a file in site/logos.
 
 import json
 import math
@@ -25,7 +27,9 @@ ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = ROOT / "config.json"
 BOUNDARY_PATH = ROOT / "data" / "edmonton_boundary.geojson"
 OUTPUT_PATH = ROOT / "site" / "data" / "map_data.json"
+LOGO_DIR = ROOT / "site" / "logos"
 SPREADSHEET_EXTENSIONS = [".xlsx", ".xls", ".csv"]
+LOGO_EXTENSIONS = [".svg", ".png", ".jpg", ".jpeg", ".webp"]
 
 OPEN_DATA = "https://data.edmonton.ca"
 BOUNDARY_SEARCH = "corporate boundary"
@@ -44,6 +48,7 @@ COLUMN_ALIASES = {
     "rating": ["rating"],
     "reviews": ["reviews", "reviewcount"],
     "url": ["url", "link", "mapsurl"],
+    "logo": ["logo", "logofile", "icon"],
 }
 REQUIRED = ["name", "type", "lat", "lon"]
 
@@ -188,12 +193,20 @@ def distance_km(lat1, lon1, lat2, lon2):
          * math.sin((lon2 - lon1) * rad / 2) ** 2)
     return 2 * 6371 * math.asin(math.sqrt(h))
 
+def load_logos(placeholder):
+    """Return {normalized file name: file name} for the images in site/logos,
+    so 'Empire Metal & Recycling Ltd..png' matches the company of that name."""
+    if not LOGO_DIR.is_dir():
+        return {}
+    return {normalize(p.stem): p.name for p in sorted(LOGO_DIR.iterdir())
+            if p.suffix.lower() in LOGO_EXTENSIONS and p.name != placeholder}
+
 # ── 4: BUILD ─────────────────────────────────────────────────────────────────
 
-def build_view(view_cfg, base, city):
+def build_view(view_cfg, base, city, logos):
     path = find_input(view_cfg["input"])
     points, seen = [], set()
-    no_coords, outside, dupes = [], [], 0
+    no_coords, outside, missing_logos, dupes = [], [], [], 0
 
     for sheet, df in read_sheets(path).items():
         cols = map_columns(df, f"{path.name} / sheet '{sheet}'")
@@ -229,12 +242,23 @@ def build_view(view_cfg, base, city):
             place_id = re.search(r"!19s(ChIJ[\w-]+)", url)
             if place_id:
                 point["place_id"] = place_id.group(1)
+
+            # Logo: named in a Logo column, or a file in site/logos named after the place
+            logo = get(row, "logo")
+            if logo and not (LOGO_DIR / logo).is_file():
+                missing_logos.append(f"'{sheet}' row {i + 2}: {name} -> logos/{logo}")
+                logo = ""
+            logo = logo or logos.get(normalize(name), "")
+            if logo:
+                point["logo"] = logo
             points.append(point)
 
     points.sort(key=lambda p: p["km"])
+    with_logo = sum("logo" in p for p in points)
     print(f"{view_cfg['label']}: {path.name} -> {len(points)} pins in Edmonton "
-          f"({dupes} duplicates merged)")
-    for label, rows in (("no coordinates", no_coords), ("outside Edmonton", outside)):
+          f"({dupes} duplicates merged, {with_logo} with a logo)")
+    for label, rows in (("no coordinates", no_coords), ("outside Edmonton", outside),
+                        ("a Logo file that is not in site/logos", missing_logos)):
         if rows:
             print(f"  skipped {len(rows)} row(s) with {label}:")
             for r in rows:
@@ -246,11 +270,14 @@ def main():
     config = json.loads(CONFIG_PATH.read_text())
     base = config["base"]
     city = load_boundary(base)
-    views = {key: build_view(cfg, base, city) for key, cfg in config["views"].items()}
+    logo_cfg = config.get("logos", {})
+    logos = load_logos(logo_cfg.get("placeholder", ""))
+    views = {key: build_view(cfg, base, city, logos) for key, cfg in config["views"].items()}
 
     data = {"title": config["title"], "base": base,
             "radius_options_km": config["radius_options_km"],
-            "default_radius_km": config["default_radius_km"], "views": views}
+            "default_radius_km": config["default_radius_km"],
+            "logos": logo_cfg, "views": views}
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_PATH.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n")
     print(f"Wrote {OUTPUT_PATH.relative_to(ROOT)}")

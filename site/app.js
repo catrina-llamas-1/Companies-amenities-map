@@ -10,6 +10,7 @@ const OTHER = "Other types";
 const LABEL_MIN_ZOOM = 15;   // from this zoom, label every pin on screen...
 const FEW_PINS = 60;         // ...below it, only when this few pins are on screen
 const MAX_LABELS = 250;      // cap on labels drawn at once
+const LOGO_SIZE = 30;        // logo pins are this many pixels across
 
 const map = L.map("map", { preferCanvas: true, maxZoom: 20 });
 
@@ -109,23 +110,57 @@ function popupHtml(p) {
       `&query_place_id=${encodeURIComponent(p.place_id)}" target="_blank" rel="noopener">` +
       `Open in Google Maps</a></p>`
     : "";
-  return `<div class="popup"><h3>${escapeHtml(p.name)}</h3>` +
+  const logo = p.logo ? `<img class="logo" src="logos/${encodeURIComponent(p.logo)}" alt="" onerror="this.remove()">` : "";
+  return `<div class="popup">${logo}<h3>${escapeHtml(p.name)}</h3>` +
          `<p class="muted">${escapeHtml(p.type)}</p>` +
          (p.address ? `<p>${escapeHtml(p.address)}</p>` : "") + rating +
          `<p class="muted">${formatKm(p.km)} from ${escapeHtml(base.name)}</p>${link}</div>`;
 }
 
+// Logo pins: images from site/logos, framed in the place's type colour.
+// A missing or broken image falls back to the placeholder.
+function placeholderSrc() {
+  const file = (state.data.logos || {}).placeholder || "placeholder.svg";
+  return `logos/${encodeURIComponent(file)}`;
+}
+
+function logoSrc(p) {
+  if (p.logo) return `logos/${encodeURIComponent(p.logo)}`;
+  return (state.data.logos || {}).placeholder_for_all ? placeholderSrc() : null;
+}
+
+function logoIcon(src, color) {
+  const fallback = escapeHtml(placeholderSrc());
+  return L.divIcon({
+    className: "",
+    html: `<div class="logo-pin" style="border-color:${color}">` +
+          `<img src="${escapeHtml(src)}" alt="" ` +
+          `onerror="this.onerror=null;this.src='${fallback}'"></div>`,
+    iconSize: [LOGO_SIZE, LOGO_SIZE],
+    iconAnchor: [LOGO_SIZE / 2, LOGO_SIZE / 2],
+  });
+}
+
 function setupView(key, view) {
-  const items = view.points.map((p) => ({
-    p,
-    group: OTHER,
-    search: `${p.name} ${p.type} ${p.address}`.toLowerCase(),
-    marker: L.circleMarker([p.lat, p.lon], {
-      radius: 7, color: "#fff", weight: 1.5, fillColor: OTHER_COLOR, fillOpacity: 0.9,
-    }).bindPopup(() => popupHtml(p)),
-  }));
-  items.forEach((it) => it.marker.bindTooltip(`<span class="name">${escapeHtml(it.p.name)}</span>`,
-    { direction: "top", offset: [0, -6], className: "pin-label" }));
+  const items = view.points.map((p) => {
+    const logo = logoSrc(p);
+    const marker = logo
+      ? L.marker([p.lat, p.lon], { icon: logoIcon(logo, OTHER_COLOR) })
+      : L.circleMarker([p.lat, p.lon], {
+          radius: 7, color: "#fff", weight: 1.5, fillColor: OTHER_COLOR, fillOpacity: 0.9,
+        });
+    return {
+      p, logo, marker, color: OTHER_COLOR,
+      group: OTHER,
+      labelOffset: logo ? -(LOGO_SIZE / 2 + 2) : -6,
+      search: `${p.name} ${p.type} ${p.address}`.toLowerCase(),
+    };
+  });
+  items.forEach((it) => {
+    it.marker.bindPopup(() => popupHtml(it.p));
+    it.marker.bindTooltip(`<span class="name">${escapeHtml(it.p.name)}</span>`,
+      { direction: "top", offset: [0, it.labelOffset], className: "pin-label" });
+  });
   state.views[key] = { items, groups: [], colors: {}, counts: {}, hidden: new Set() };
 }
 
@@ -145,7 +180,11 @@ function assignColors() {
   v.counts = {};
   v.items.forEach((it) => {
     it.group = it.p.type in v.colors ? it.p.type : OTHER;
-    it.marker.setStyle({ fillColor: v.colors[it.group] });
+    const color = v.colors[it.group];
+    if (color === it.color) return;
+    it.color = color;
+    if (it.logo) it.marker.setIcon(logoIcon(it.logo, color));
+    else it.marker.setStyle({ fillColor: color });
   });
   inRange.forEach((it) => { v.counts[it.group] = (v.counts[it.group] || 0) + 1; });
   v.groups = v.counts[OTHER] ? [...top, OTHER] : top;
@@ -180,7 +219,7 @@ function drawLabels() {
   onScreen
     .slice(0, MAX_LABELS)
     .forEach((it) => {
-      L.tooltip({ permanent: true, direction: "top", offset: [0, -6],
+      L.tooltip({ permanent: true, direction: "top", offset: [0, it.labelOffset],
                   className: "pin-label", interactive: false })
         .setLatLng(it.marker.getLatLng())
         .setContent(`<span class="name">${escapeHtml(it.p.name)}</span>`)
