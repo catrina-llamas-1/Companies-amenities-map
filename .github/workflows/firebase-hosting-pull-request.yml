@@ -1,12 +1,14 @@
 # Builds the map on every pull request and, once Firebase is set up, deploys a
-# temporary preview (the preview link is posted as a comment on the PR).
+# 7-day preview channel and comments its link on the PR. Signs in to Google
+# Cloud without a key (Workload Identity Federation); see
+# scripts/setup_github_deploy.sh.
 name: Firebase preview
 
 on: pull_request
 
 permissions:
-  checks: write
   contents: read
+  id-token: write
   pull-requests: write
 
 jobs:
@@ -29,10 +31,11 @@ jobs:
       - name: Check Firebase setup
         id: firebase
         env:
-          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.FIREBASE_SERVICE_ACCOUNT_STONY_PLAIN_RD_COMPANIES_MAP }}
+          PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
         run: |
           project=$(python -c "import json; print(json.load(open('.firebaserc'))['projects']['default'])")
-          if [ -z "$SERVICE_ACCOUNT" ] || [ "$project" = "your-firebase-project-id" ]; then
+          if [ -z "$PROVIDER" ] || [ -z "$SERVICE_ACCOUNT" ] || [ "$project" = "your-firebase-project-id" ]; then
             echo "::notice::Firebase is not set up yet (see README), so no preview was deployed."
             echo "ready=false" >> "$GITHUB_OUTPUT"
           else
@@ -40,10 +43,26 @@ jobs:
             echo "project=$project" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: FirebaseExtended/action-hosting-deploy@v0
+      - uses: google-github-actions/auth@v2
         if: steps.firebase.outputs.ready == 'true'
         with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.FIREBASE_SERVICE_ACCOUNT_STONY_PLAIN_RD_COMPANIES_MAP }}
-          projectId: ${{ steps.firebase.outputs.project }}
-          expires: 7d
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Deploy preview channel
+        if: steps.firebase.outputs.ready == 'true'
+        env:
+          PROJECT: ${{ steps.firebase.outputs.project }}
+          PR: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          npx --yes firebase-tools@15 hosting:channel:deploy "pr-$PR" --expires 7d \
+            --no-authorized-domains --project "$PROJECT" --json | tee deploy.json
+          url=$(grep -o '"url": *"https://[^"]*"' deploy.json | head -1 | grep -o 'https://[^"]*')
+          if [ -z "$url" ]; then
+            echo "::error::Preview deployed but no URL found in the Firebase output."
+            exit 1
+          fi
+          echo "Preview: $url" >> "$GITHUB_STEP_SUMMARY"
+          gh pr comment "$PR" --edit-last --create-if-none \
+            --body "🗺️ Map preview for this PR (expires in 7 days): $url"

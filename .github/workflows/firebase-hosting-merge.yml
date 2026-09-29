@@ -1,12 +1,18 @@
 # Builds the map from the spreadsheets and deploys it to Firebase Hosting (live)
-# on every push to main. Needs the FIREBASE_SERVICE_ACCOUNT repository secret
-# and the project ID in .firebaserc; until both are set, it only builds.
+# on every push to main. Signs in to Google Cloud without a key (Workload
+# Identity Federation); run scripts/setup_github_deploy.sh once and add the
+# GCP_WORKLOAD_IDENTITY_PROVIDER and GCP_SERVICE_ACCOUNT repository variables.
+# Until then it only builds.
 name: Deploy to Firebase Hosting
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
   build_and_deploy:
@@ -27,10 +33,11 @@ jobs:
       - name: Check Firebase setup
         id: firebase
         env:
-          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.FIREBASE_SERVICE_ACCOUNT_STONY_PLAIN_RD_COMPANIES_MAP }}
+          PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
         run: |
           project=$(python -c "import json; print(json.load(open('.firebaserc'))['projects']['default'])")
-          if [ -z "$SERVICE_ACCOUNT" ] || [ "$project" = "your-firebase-project-id" ]; then
+          if [ -z "$PROVIDER" ] || [ -z "$SERVICE_ACCOUNT" ] || [ "$project" = "your-firebase-project-id" ]; then
             echo "::warning::Firebase is not set up yet (see README), so the map was built but not deployed."
             echo "ready=false" >> "$GITHUB_OUTPUT"
           else
@@ -38,10 +45,16 @@ jobs:
             echo "project=$project" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: FirebaseExtended/action-hosting-deploy@v0
+      - uses: google-github-actions/auth@v2
         if: steps.firebase.outputs.ready == 'true'
         with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.FIREBASE_SERVICE_ACCOUNT_STONY_PLAIN_RD_COMPANIES_MAP }}
-          projectId: ${{ steps.firebase.outputs.project }}
-          channelId: live
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Deploy to Firebase Hosting
+        if: steps.firebase.outputs.ready == 'true'
+        env:
+          PROJECT: ${{ steps.firebase.outputs.project }}
+        run: |
+          npx --yes firebase-tools@15 deploy --only hosting --project "$PROJECT" --non-interactive
+          echo "Live site: https://$PROJECT.web.app" >> "$GITHUB_STEP_SUMMARY"

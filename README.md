@@ -31,37 +31,26 @@ The base point's name and coordinates, the page title, the view names and the di
 
 1. Create a project in the [Firebase console](https://console.firebase.google.com/). Hosting is included on the free Spark plan.
 2. Put its project ID in `.firebaserc` in place of `your-firebase-project-id`.
-3. Give GitHub permission to deploy by adding a service-account secret. Use either method.
+3. Let GitHub deploy to the project. This uses Google's keyless [Workload Identity Federation](https://cloud.google.com/iam/docs/workload-identity-federation), so no service-account key or secret is needed. It works even when your organisation blocks key creation (`iam.disableServiceAccountKeyCreation`).
+   1. Open [Google Cloud Shell](https://shell.cloud.google.com), signed in as an owner of the Firebase project, and run:
 
-   **Option A (recommended): Firebase CLI.** Run this from [Google Cloud Shell](https://shell.cloud.google.com) or any computer with Node.js:
+      ```bash
+      git clone https://github.com/catrina-llamas-1/Companies-amenities-map.git
+      bash Companies-amenities-map/scripts/setup_github_deploy.sh
+      ```
 
-   ```bash
-   npm install -g firebase-tools    # skip if `firebase --version` already works
-   firebase login                   # in Cloud Shell: firebase login --no-localhost
-   git clone https://github.com/catrina-llamas-1/Companies-amenities-map.git
-   cd Companies-amenities-map
-   firebase init hosting:github
-   ```
+      The script creates a `github-deploy` service account with only the roles needed to deploy Hosting. It then allows only this repository's GitHub Actions to use that account. It's safe to run again.
+   2. The script prints two values. In GitHub, go to **Settings → Secrets and variables → Actions → Variables** tab, click **New repository variable**, and add both:
+      - `GCP_WORKLOAD_IDENTITY_PROVIDER`
+      - `GCP_SERVICE_ACCOUNT`
 
-   Answer the prompts as follows:
-   - **Repository:** `catrina-llamas-1/Companies-amenities-map`
-   - **Set up the workflow to run a build script:** No
-   - **Set up automatic deployment when a PR is merged:** No
-   - **Overwrite** any existing file: No
-
-   This creates a service account with the right permissions and stores it as the GitHub secret `FIREBASE_SERVICE_ACCOUNT_STONY_PLAIN_RD_COMPANIES_MAP`. The workflows already use that name.
-
-   **Option B: by hand.**
-   1. In the [Google Cloud console](https://console.cloud.google.com/iam-admin/serviceaccounts?project=stony-plain-rd-companies-map), go to **IAM & Admin → Service accounts → Create service account**. Give it the roles **Firebase Hosting Admin**, **Cloud Run Viewer** and **API Keys Viewer**.
-   2. Open the new account and go to **Keys → Add key → Create new key → JSON**. A JSON file downloads.
-   3. In GitHub, go to **Settings → Secrets and variables → Actions → New repository secret**. Name it `FIREBASE_SERVICE_ACCOUNT`, paste the whole JSON file as the value, and save.
-   4. Delete the downloaded file afterwards. It's a password for your Firebase project.
+      These are variables, not secrets. They aren't sensitive, because only this repository can use them.
 
 ### What happens after setup
 
 - **Push to `main`** → `.github/workflows/firebase-hosting-merge.yml` builds the map data and deploys it live to `https://<project-id>.web.app`.
 - **Pull request** → `.github/workflows/firebase-hosting-pull-request.yml` deploys a 7-day preview and comments its link on the PR.
-- Until the secret and project ID are set, both workflows only build the data and skip the deploy, so checks stay green.
+- Until those two variables are set, both workflows only build the data and skip the deploy, so checks stay green.
 
 ### Deploying by hand
 
