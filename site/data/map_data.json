@@ -1,0 +1,98 @@
+{
+  "title": "21350 Stony Plain Rd — Area Map",
+  "base": {
+    "name": "21350 Stony Plain Rd",
+    "address": "21350 Stony Plain Rd NW, Edmonton, AB",
+    "lat": 53.5418,
+    "lon": -113.6995
+  },
+  "views": {
+    "companies": {
+      "label": "Industrial Companies",
+      "points": [
+        {
+          "name": "Sample Company A",
+          "type": "Manufacturing",
+          "address": "",
+          "lat": 53.5462,
+          "lon": -113.6921
+        },
+        {
+          "name": "Sample Company B",
+          "type": "Warehousing & Logistics",
+          "address": "",
+          "lat": 53.5391,
+          "lon": -113.7068
+        },
+        {
+          "name": "Sample Company C",
+          "type": "Fabrication",
+          "address": "",
+          "lat": 53.5501,
+          "lon": -113.7012
+        },
+        {
+          "name": "Sample Company D",
+          "type": "Manufacturing",
+          "address": "",
+          "lat": 53.5357,
+          "lon": -113.6889
+        },
+        {
+          "name": "Sample Company E",
+          "type": "Equipment Rental",
+          "address": "",
+          "lat": 53.5445,
+          "lon": -113.712
+        }
+      ]
+    },
+    "amenities": {
+      "label": "Area Amenities",
+      "points": [
+        {
+          "name": "Sample Restaurant",
+          "type": "Restaurant",
+          "address": "",
+          "lat": 53.543,
+          "lon": -113.695
+        },
+        {
+          "name": "Sample Gas Station",
+          "type": "Gas Station",
+          "address": "",
+          "lat": 53.5405,
+          "lon": -113.6905
+        },
+        {
+          "name": "Sample Hotel",
+          "type": "Hotel",
+          "address": "",
+          "lat": 53.547,
+          "lon": -113.698
+        },
+        {
+          "name": "Sample Coffee Shop",
+          "type": "Coffee",
+          "address": "",
+          "lat": 53.5395,
+          "lon": -113.703
+        },
+        {
+          "name": "Sample Grocery",
+          "type": "Grocery",
+          "address": "",
+          "lat": 53.548,
+          "lon": -113.687
+        },
+        {
+          "name": "Sample Bank",
+          "type": "Bank",
+          "address": "",
+          "lat": 53.5372,
+          "lon": -113.696
+        }
+      ]
+    }
+  }
+}

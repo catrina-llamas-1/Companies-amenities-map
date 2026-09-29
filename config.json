@@ -1,0 +1,20 @@
+{
+  "title": "21350 Stony Plain Rd — Area Map",
+  "base": {
+    "name": "21350 Stony Plain Rd",
+    "address": "21350 Stony Plain Rd NW, Edmonton, AB",
+    "lat": 53.5418,
+    "lon": -113.6995
+  },
+  "views": {
+    "companies": {
+      "label": "Industrial Companies",
+      "input": "data/industrial_companies"
+    },
+    "amenities": {
+      "label": "Area Amenities",
+      "input": "data/area_amenities"
+    }
+  },
+  "geocode_suffix": "Edmonton, AB, Canada"
+}

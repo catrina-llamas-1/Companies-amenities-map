@@ -1,0 +1,116 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1f2328;
+  --muted: #656d76;
+  --border: #d0d7de;
+  --accent: #0b5cad;
+  --panel: rgba(255, 255, 255, 0.96);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+body { display: flex; flex-direction: column; }
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  z-index: 1000;
+}
+
+.topbar h1 { font-size: 17px; margin: 0; margin-right: auto; }
+
+.tabs { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+
+.tabs button {
+  font: inherit;
+  font-size: 14px;
+  padding: 7px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+.tabs button + button { border-left: 1px solid var(--border); }
+.tabs button[aria-selected="true"] { background: var(--accent); color: #fff; }
+
+.toggle { font-size: 14px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+
+#map { flex: 1; min-height: 0; }
+
+/* Legend */
+.legend {
+  position: absolute;
+  right: 12px;
+  bottom: 28px;
+  z-index: 1000;
+  max-height: 50vh;
+  overflow-y: auto;
+  min-width: 180px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  font-size: 13px;
+}
+.legend h2 { font-size: 13px; margin: 0 0 6px; }
+.legend label { display: flex; align-items: center; gap: 6px; padding: 2px 0; cursor: pointer; }
+.legend .count { color: var(--muted); margin-left: auto; padding-left: 8px; }
+.swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  flex: none;
+}
+.swatch.base { border-radius: 2px; background: #111; }
+
+/* Pin labels */
+.leaflet-tooltip.pin-label {
+  padding: 3px 6px;
+  font-size: 12px;
+  line-height: 1.25;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+.pin-label .name { font-weight: 600; }
+.pin-label .type { color: var(--muted); }
+.hide-labels .leaflet-tooltip.pin-label.permanent { display: none; }
+
+.leaflet-tooltip.base-label { font-weight: 700; font-size: 13px; }
+
+/* Base point marker */
+.base-marker {
+  width: 22px;
+  height: 22px;
+  background: #111;
+  border: 3px solid #fff;
+  border-radius: 4px;
+  transform: rotate(45deg);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.popup h3 { margin: 0 0 2px; font-size: 14px; }
+.popup p { margin: 2px 0; }
+.popup .muted { color: #656d76; }
+
+.error { padding: 24px; color: #b42318; }
+
+@media (max-width: 600px) {
+  .topbar h1 { width: 100%; font-size: 15px; }
+  .legend { right: 8px; bottom: 20px; min-width: 150px; max-height: 35vh; }
+}
