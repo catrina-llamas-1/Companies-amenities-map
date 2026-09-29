@@ -16,9 +16,11 @@ The map has these controls:
 
 ## Updating the data
 
-1. Replace the spreadsheets in `data/`, keeping exactly one file per view: `industrial_companies.xlsx` and `area_amenities.xlsx` (`.xls` or `.csv` also work).
+1. Replace the spreadsheets in `data/`, keeping exactly one file per view. The file name must start with `industrial_companies` or `area_amenities` (for example `area_amenities.xlsx` or `area_amenities_.csv`). `.xlsx`, `.xls` and `.csv` all work.
 2. Required columns: **Name**, **Type**, **Lat**, **Lng** ("Latitude" and "Longitude" also work). **Address**, **Rating**, **Reviews** and **URL** (the Google Maps link) are used when present, and other columns are ignored.
-3. Every sheet in a workbook is read. Rows that appear more than once (same name and coordinates) are merged. Rows without coordinates, or more than 50 km from the base point, are skipped and listed in the build log.
+3. Every sheet in a workbook is read. Rows that appear more than once (same name and coordinates) are merged. Rows without coordinates are skipped, and so are rows **outside the City of Edmonton**. Every skipped row is listed in the build log.
+
+   The Edmonton check uses the official City of Edmonton Corporate Boundary. The build downloads it from [data.edmonton.ca](https://data.edmonton.ca) and saves it as `data/edmonton_boundary.geojson`. If the download fails, the build stops rather than include places outside the city. To fix that, open the dataset on data.edmonton.ca, choose **Export → GeoJSON**, and upload the file to `data/` with that name.
 4. Commit and push to `main`, and the site redeploys automatically.
 
 The base point's name and coordinates, the page title, the view names and the distance options are set in `config.json`.

@@ -7,21 +7,32 @@
 #
 # Each spreadsheet needs Name, Type, Lat and Lng columns (Address, Rating,
 # Reviews and URL are used when present). Every sheet in a workbook is read and
-# duplicate rows (same name and coordinates) are merged. Rows without
-# coordinates, or farther than max_distance_km from the base point, are skipped.
+# duplicate rows (same name and coordinates) are merged. Only places inside the
+# City of Edmonton boundary are kept; the boundary is downloaded from the City's
+# open data portal on first run and saved to data/edmonton_boundary.geojson.
 
 import json
 import math
 import re
 import sys
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = ROOT / "config.json"
+BOUNDARY_PATH = ROOT / "data" / "edmonton_boundary.geojson"
 OUTPUT_PATH = ROOT / "site" / "data" / "map_data.json"
 SPREADSHEET_EXTENSIONS = [".xlsx", ".xls", ".csv"]
+
+OPEN_DATA = "https://data.edmonton.ca"
+BOUNDARY_SEARCH = "corporate boundary"
+BOUNDARY_HELP = (
+    "Download the boundary by hand: on data.edmonton.ca search for "
+    "'City of Edmonton - Corporate Boundary', choose Export -> GeoJSON, and "
+    f"upload the file as {BOUNDARY_PATH.relative_to(ROOT)}")
 
 # Accepted header spellings (compared lower-case, ignoring spaces/underscores)
 COLUMN_ALIASES = {
@@ -38,22 +49,24 @@ REQUIRED = ["name", "type", "lat", "lon"]
 
 # ── 1: READ SPREADSHEETS ─────────────────────────────────────────────────────
 
-def find_input(stem):
-    """Return the single spreadsheet at <stem>.xlsx/.xls/.csv."""
-    matches = [ROOT / f"{stem}{ext}" for ext in SPREADSHEET_EXTENSIONS
-               if (ROOT / f"{stem}{ext}").exists()]
+def find_input(prefix):
+    """Return the single spreadsheet whose name starts with <prefix>
+    (so 'area_amenities.xlsx', 'area_amenities_.csv' etc. all match)."""
+    folder, stem = (ROOT / prefix).parent, Path(prefix).name
+    matches = sorted(p for p in folder.glob(f"{stem}*")
+                     if p.suffix.lower() in SPREADSHEET_EXTENSIONS)
     if not matches:
-        sys.exit(f"ERROR: no spreadsheet found for {stem} "
+        sys.exit(f"ERROR: no spreadsheet found for {prefix}* "
                  f"(expected one of {', '.join(SPREADSHEET_EXTENSIONS)})")
     if len(matches) > 1:
-        sys.exit(f"ERROR: several spreadsheets for {stem}: "
+        sys.exit(f"ERROR: several spreadsheets for {prefix}*: "
                  f"{', '.join(m.name for m in matches)} — keep only one")
     return matches[0]
 
 
 def read_sheets(path):
     """Return {sheet name: DataFrame} for every sheet in the file."""
-    if path.suffix == ".csv":
+    if path.suffix.lower() == ".csv":
         return {path.stem: pd.read_csv(path, dtype=str, keep_default_na=False)}
     return pd.read_excel(path, sheet_name=None, dtype=str, keep_default_na=False)
 
@@ -77,7 +90,85 @@ def map_columns(df, where):
                  f"Headers found: {list(df.columns)}")
     return mapping
 
-# ── 2: HELPERS ───────────────────────────────────────────────────────────────
+# ── 2: CITY OF EDMONTON BOUNDARY ─────────────────────────────────────────────
+
+def fetch_json(url):
+    req = urllib.request.Request(url, headers={"User-Agent": "companies-amenities-map"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return json.load(r)
+
+
+def boundary_polygons(geojson):
+    """Return a list of polygons, each a list of rings of (lon, lat)."""
+    features = geojson.get("features", [geojson])
+    polygons = []
+    for f in features:
+        geom = f.get("geometry") or {}
+        if geom.get("type") == "Polygon":
+            polygons.append(geom["coordinates"])
+        elif geom.get("type") == "MultiPolygon":
+            polygons.extend(geom["coordinates"])
+    return polygons
+
+
+def point_in_polygons(lon, lat, polygons):
+    """Even-odd ray casting; holes are handled because every ring is counted."""
+    for rings in polygons:
+        inside = False
+        for ring in rings:
+            for (x1, y1), (x2, y2) in zip(ring, ring[1:] + ring[:1]):
+                if (y1 > lat) != (y2 > lat) and lon < x1 + (lat - y1) * (x2 - x1) / (y2 - y1):
+                    inside = not inside
+        if inside:
+            return True
+    return False
+
+
+def download_boundary(base):
+    """Find the Corporate Boundary dataset on data.edmonton.ca and download it."""
+    query = urllib.parse.urlencode({"q": BOUNDARY_SEARCH, "only": "datasets,maps", "limit": 20})
+    results = fetch_json(f"{OPEN_DATA}/api/catalog/v1?{query}")["results"]
+    ids = []
+    for r in results:
+        name = r["resource"]["name"]
+        if "corporate boundary" in name.lower():
+            ids.append(r["resource"]["id"])
+            ids.extend(r["resource"].get("parent_fxf") or [])
+    if not ids:
+        raise RuntimeError(f"no 'Corporate Boundary' dataset found on {OPEN_DATA}")
+
+    for dataset_id in dict.fromkeys(ids):
+        for url in (f"{OPEN_DATA}/resource/{dataset_id}.geojson",
+                    f"{OPEN_DATA}/api/geospatial/{dataset_id}?method=export&format=GeoJSON"):
+            try:
+                geojson = fetch_json(url)
+            except Exception as e:
+                print(f"  (tried {url}: {e})")
+                continue
+            polygons = boundary_polygons(geojson)
+            if polygons and point_in_polygons(base["lon"], base["lat"], polygons):
+                print(f"  downloaded city boundary from {url}")
+                return geojson
+            print(f"  (tried {url}: not a boundary containing the base point)")
+    raise RuntimeError("could not download a usable boundary")
+
+
+def load_boundary(base):
+    if BOUNDARY_PATH.exists():
+        geojson = json.loads(BOUNDARY_PATH.read_text())
+    else:
+        print("City of Edmonton boundary not found locally, downloading...")
+        try:
+            geojson = download_boundary(base)
+        except Exception as e:
+            sys.exit(f"ERROR: could not get the City of Edmonton boundary ({e}).\n{BOUNDARY_HELP}")
+        BOUNDARY_PATH.write_text(json.dumps(geojson) + "\n")
+    polygons = boundary_polygons(geojson)
+    if not polygons or not point_in_polygons(base["lon"], base["lat"], polygons):
+        sys.exit(f"ERROR: {BOUNDARY_PATH.name} does not contain the base point. {BOUNDARY_HELP}")
+    return polygons
+
+# ── 3: HELPERS ───────────────────────────────────────────────────────────────
 
 def to_float(value):
     try:
@@ -93,12 +184,12 @@ def distance_km(lat1, lon1, lat2, lon2):
          * math.sin((lon2 - lon1) * rad / 2) ** 2)
     return 2 * 6371 * math.asin(math.sqrt(h))
 
-# ── 3: BUILD ─────────────────────────────────────────────────────────────────
+# ── 4: BUILD ─────────────────────────────────────────────────────────────────
 
-def build_view(view_cfg, base, max_km):
+def build_view(view_cfg, base, city):
     path = find_input(view_cfg["input"])
     points, seen = [], set()
-    no_coords, too_far, dupes = [], [], 0
+    no_coords, outside, dupes = [], [], 0
 
     for sheet, df in read_sheets(path).items():
         cols = map_columns(df, f"{path.name} / sheet '{sheet}'")
@@ -112,15 +203,14 @@ def build_view(view_cfg, base, max_km):
                 # Name left out of the log: stray rows here can hold personal data
                 no_coords.append(f"'{sheet}' row {i + 2}")
                 continue
-            where = f"'{sheet}' row {i + 2}: {name}"
             key = (name.lower(), round(lat, 5), round(lon, 5))
             if key in seen:
                 dupes += 1
                 continue
             seen.add(key)
             km = distance_km(base["lat"], base["lon"], lat, lon)
-            if km > max_km:
-                too_far.append(f"{where} ({km:,.0f} km away)")
+            if not point_in_polygons(lon, lat, city):
+                outside.append(f"'{sheet}' row {i + 2}: {name} ({km:,.1f} km from base)")
                 continue
 
             url = get(row, "url")
@@ -138,10 +228,9 @@ def build_view(view_cfg, base, max_km):
             points.append(point)
 
     points.sort(key=lambda p: p["km"])
-    print(f"{view_cfg['label']}: {path.name} -> {len(points)} pins "
+    print(f"{view_cfg['label']}: {path.name} -> {len(points)} pins in Edmonton "
           f"({dupes} duplicates merged)")
-    for label, rows in (("no coordinates", no_coords),
-                        (f"more than {max_km:g} km from base", too_far)):
+    for label, rows in (("no coordinates", no_coords), ("outside Edmonton", outside)):
         if rows:
             print(f"  skipped {len(rows)} row(s) with {label}:")
             for r in rows:
@@ -152,8 +241,8 @@ def build_view(view_cfg, base, max_km):
 def main():
     config = json.loads(CONFIG_PATH.read_text())
     base = config["base"]
-    views = {key: build_view(cfg, base, config["max_distance_km"])
-             for key, cfg in config["views"].items()}
+    city = load_boundary(base)
+    views = {key: build_view(cfg, base, city) for key, cfg in config["views"].items()}
 
     data = {"title": config["title"], "base": base,
             "radius_options_km": config["radius_options_km"],
