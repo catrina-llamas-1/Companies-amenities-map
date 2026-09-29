@@ -1,14 +1,14 @@
 # Input spreadsheets
 
-Upload the two spreadsheets for the map here, one per view:
+Upload the map's spreadsheets here:
 
-- `industrial_companies.xlsx`: Industrial Companies view
-- `area_amenities.xlsx`: Area Amenities view
+- **Industrial Companies:** one file whose name starts with `industrial_companies`, e.g. `industrial_companies.xlsx`.
+- **Area Amenities:** every other spreadsheet in this folder, one per category, e.g. `Bank.xlsx`, `Gas Station.xlsx`, `Grocery.xlsx`, `Mall.xlsx`, `Restaurant.xlsx`. To add a category, upload another file; to remove one, delete its file.
 
-The file name must start with `industrial_companies` or `area_amenities`. `.xlsx`, `.xls` and `.csv` all work. Keep only one file per view.
-
-Only places inside the City of Edmonton are shown. `edmonton_boundary.geojson`, the official city boundary, is downloaded here automatically by the build.
+`.xlsx`, `.xls` and `.csv` all work. Every sheet inside a workbook is read.
 
 Required columns: **Name**, **Type**, **Lat**, **Lng**. **Address**, **Rating**, **Reviews** and **URL** are used when present.
+
+Only places inside the City of Edmonton are shown. `edmonton_boundary.geojson`, the official city boundary, is downloaded here automatically by the build.
 
 To upload on GitHub, open this folder and choose **Add file → Upload files**.

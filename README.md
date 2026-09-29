@@ -3,7 +3,7 @@
 An interactive web map with two views around the base point **21350 Stony Plain Rd, Edmonton**:
 
 - **Industrial Companies**: from `data/industrial_companies.xlsx`
-- **Area Amenities**: from `data/area_amenities.xlsx`
+- **Area Amenities**: from every other spreadsheet in `data/`, one file per category (e.g. `Bank.xlsx`, `Gas Station.xlsx`, `Grocery.xlsx`, `Mall.xlsx`, `Restaurant.xlsx`)
 
 Pins are plotted from each row's Lat/Lng and labelled with the place's **name**. Labels appear whenever 60 or fewer pins are on screen, or at street-level zoom.
 
@@ -12,13 +12,15 @@ The map has these controls:
 - **Distance:** the drop-down limits pins to a radius around the base point (1–50 km, default 5 km) and draws that radius as a dashed circle.
 - **Search:** filters pins by name, type or address.
 - **Legend:** the 10 most common types within the chosen radius get their own colour, and the rest are grouped as "Other types". Untick a type to hide it.
-- **Base map:** the layers button under the zoom controls switches between Street (OpenStreetMap), Street (Esri) and Satellite (Esri). None of these needs an API key. The page remembers the last choice, and if a map's tiles fail to load it switches to the next one automatically.
-- **Logo pins:** a place whose logo is in `site/logos/` shows it as its pin, framed in the type colour. See [`site/logos/README.md`](site/logos/README.md) for how to name the files and customise the placeholder.
+- **Base map:** the **Map / Satellite** buttons at the top switch between the street map and satellite imagery, which is overlaid with road and place names. The layers button under the zoom controls also offers Street (OpenStreetMap), Street (Esri) and Satellite (Esri). None of these needs an API key. The page remembers the last choice, and if a map's tiles fail to load it switches to the next one automatically.
+- **Logo pins:** Industrial Companies pins show `site/logos/industrial.svg` and Area Amenities pins show `site/logos/amenities.svg`, each framed in the type colour. Both are placeholders; see [`site/logos/README.md`](site/logos/README.md) to replace them.
 - **Popups:** clicking a pin shows its type, address, rating, distance from the base point and a Google Maps link.
 
 ## Updating the data
 
-1. Replace the spreadsheets in `data/`, keeping exactly one file per view. The file name must start with `industrial_companies` or `area_amenities` (for example `area_amenities.xlsx` or `area_amenities_.csv`). `.xlsx`, `.xls` and `.csv` all work.
+1. Put the spreadsheets in `data/`. `.xlsx`, `.xls` and `.csv` all work.
+   - **Industrial Companies:** exactly one file whose name starts with `industrial_companies`.
+   - **Area Amenities:** any number of other spreadsheets, one per category. To add a category, upload another file, e.g. `Pharmacy.xlsx`; to remove one, delete its file.
 2. Required columns: **Name**, **Type**, **Lat**, **Lng** ("Latitude" and "Longitude" also work). **Address**, **Rating**, **Reviews** and **URL** (the Google Maps link) are used when present, and other columns are ignored.
 3. Every sheet in a workbook is read. Rows that appear more than once (same name and coordinates) are merged. Rows without coordinates are skipped, and so are rows **outside the City of Edmonton**. Every skipped row is listed in the build log.
 

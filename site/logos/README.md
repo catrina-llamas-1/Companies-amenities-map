@@ -1,23 +1,20 @@
 # Logos for map pins
 
-Put logo images here to show them as pins on the map instead of coloured dots.
+The map uses **two logos**, one for each view:
 
-## Adding a logo
+| File | Used for |
+|---|---|
+| `industrial.svg` | every pin in **Industrial Companies** |
+| `amenities.svg` | every pin in **Area Amenities**: banks, gas stations, grocery stores, malls, restaurants and any other category file in `data/` |
 
-1. Name the image after the place **exactly as it appears in the spreadsheet's Name column**. Capitals, spaces and punctuation don't matter. For example, each of these matches "Empire Metal & Recycling Ltd.":
-   - `Empire Metal & Recycling Ltd.png`
-   - `empire-metal-recycling-ltd.png`
-   - `EmpireMetalRecyclingLtd.svg`
-2. Upload it to this folder (`site/logos/`). On GitHub, open the folder and choose **Add file → Upload files**.
-3. After the site rebuilds, that place's pin shows the logo. The build log reports how many pins have a logo.
+Both are placeholders you can customise. Each pin shows its view's logo in a round frame, and the frame's colour matches the place's type in the legend.
 
-Instead of matching by name, you can add a **Logo** column to the spreadsheet and type the file name, e.g. `empire.png`. The build log lists any Logo file that can't be found here.
+## Replacing a logo
 
-Supported formats: `.svg`, `.png`, `.jpg`, `.jpeg`, `.webp`. Square images with a transparent or white background look best, and 128 × 128 px is plenty.
+1. Make your image. Square images with a transparent or white background look best, and 128 × 128 px is plenty. Supported formats: `.svg`, `.png`, `.jpg`, `.jpeg`, `.webp`.
+2. Upload it to this folder (`site/logos/`) on GitHub via **Add file → Upload files**. Then use one of these:
+   - **Same name:** give it the same name as the placeholder (e.g. `industrial.svg`) so it replaces it, or
+   - **Different name:** keep your own file name, such as `industrial.png`, and change `"logo"` for that view in `config.json`.
+3. After the site rebuilds, every pin in that view shows the new logo.
 
-## The placeholder
-
-`placeholder.svg` is a generic logo that you can customise. Replace it with your own image under the same name, or point `logos.placeholder` in `config.json` at another file. It's used:
-
-- when a logo image fails to load;
-- on **every pin without a logo**, if you set `"placeholder_for_all": true` under `logos` in `config.json`. This is off by default, so places without a logo keep their coloured dot.
+If a view's logo file is missing, the build log says so and that view falls back to plain coloured dots.
