@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Area Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1 id="title">Area Map</h1>
+    <nav class="tabs" id="tabs" role="tablist"></nav>
+    <div class="controls">
+      <select id="radius" aria-label="Distance from base point"></select>
+      <input type="search" id="search" placeholder="Search name or type" aria-label="Search pins">
+      <label class="toggle"><input type="checkbox" id="show-labels" checked> Labels</label>
+    </div>
+  </header>
+  <main id="map"></main>
+  <aside class="legend">
+    <details id="legend-box" open>
+      <summary><span id="legend-title"></span> <span class="count" id="count"></span></summary>
+      <div id="legend-items"></div>
+      <p class="hint">Zoom in to see more name labels</p>
+    </details>
+  </aside>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
