@@ -35,11 +35,12 @@ The base point's name and coordinates, the page title, the view names and the di
    1. Open [Google Cloud Shell](https://shell.cloud.google.com), signed in as an owner of the Firebase project, and run:
 
       ```bash
-      git clone https://github.com/catrina-llamas-1/Companies-amenities-map.git
-      bash Companies-amenities-map/scripts/setup_github_deploy.sh
+      cd ~
+      git clone https://github.com/catrina-llamas-1/Companies-amenities-map.git map-setup
+      bash ~/map-setup/scripts/setup_github_deploy.sh
       ```
 
-      The script creates a `github-deploy` service account with only the roles needed to deploy Hosting. It then allows only this repository's GitHub Actions to use that account. It's safe to run again.
+      The script creates a `github-deploy` service account with only the roles needed to deploy Hosting. It then allows only this repository's GitHub Actions to use that account. It's safe to run again. Before the pull request is merged, the script only exists on its branch, so add `-b claude/sweet-turing-k7tqx7` after `git clone`.
    2. The script prints two values. In GitHub, go to **Settings → Secrets and variables → Actions → Variables** tab, click **New repository variable**, and add both:
       - `GCP_WORKLOAD_IDENTITY_PROVIDER`
       - `GCP_SERVICE_ACCOUNT`
