@@ -1,0 +1,18 @@
+rules_version = '2';
+
+// Public, read-only map. Only the Colab publisher (service account via the
+// Admin SDK, which bypasses these rules) can write.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /map_meta/{docId} {
+      allow get: if true;
+    }
+    // Readers fetch chunks by id (listed in map_meta); listing is not needed.
+    match /map_chunks/{docId} {
+      allow get: if true;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,6 @@
+# Firebase service account keys: never commit these
+service-account*.json
+*-firebase-adminsdk-*.json
+.firebase/
+firebase-debug.log
+firestore-debug.log

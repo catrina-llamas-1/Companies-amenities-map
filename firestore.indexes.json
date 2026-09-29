@@ -1,0 +1,10 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "map_chunks",
+      "fieldPath": "rows_json",
+      "indexes": []
+    }
+  ]
+}
