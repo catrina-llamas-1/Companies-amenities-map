@@ -9,11 +9,13 @@
   "views": {
     "companies": {
       "label": "Industrial Companies",
-      "input": "data/industrial_companies"
+      "input": "data/industrial_companies",
+      "logo": "industrial.svg"
     },
     "amenities": {
       "label": "Area Amenities",
-      "input": "data/area_amenities"
+      "input": "data/*",
+      "logo": "amenities.svg"
     }
   },
   "radius_options_km": [
@@ -24,9 +26,5 @@
     25,
     50
   ],
-  "default_radius_km": 5,
-  "logos": {
-    "placeholder": "placeholder.svg",
-    "placeholder_for_all": false
-  }
+  "default_radius_km": 5
 }

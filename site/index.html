@@ -14,6 +14,10 @@
     <div class="controls">
       <select id="radius" aria-label="Distance from base point"></select>
       <input type="search" id="search" placeholder="Search name or type" aria-label="Search pins">
+      <div class="tabs" id="basemap-toggle" role="group" aria-label="Base map">
+        <button type="button" data-mode="map" aria-pressed="true">Map</button>
+        <button type="button" data-mode="satellite" aria-pressed="false">Satellite</button>
+      </div>
       <label class="toggle"><input type="checkbox" id="show-labels" checked> Labels</label>
     </div>
   </header>

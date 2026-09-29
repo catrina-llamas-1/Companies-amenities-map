@@ -1,6 +1,6 @@
 # BUILD MAP DATA
-# Reads the two input spreadsheets (industrial companies, area amenities) and
-# writes site/data/map_data.json, which the web map loads.
+# Reads the input spreadsheets for each map view (industrial companies, area
+# amenities) and writes site/data/map_data.json, which the web map loads.
 #
 # Usage:  pip install pandas openpyxl
 #         python build_map_data.py
@@ -10,8 +10,9 @@
 # duplicate rows (same name and coordinates) are merged. Only places inside the
 # City of Edmonton boundary are kept; the boundary is downloaded from the City's
 # open data portal on first run and saved to data/edmonton_boundary.geojson.
-# A place gets a logo pin when site/logos holds an image named after it, or
-# when an optional Logo column names a file in site/logos.
+# A view whose "input" ends in "*" (the amenities view) reads every spreadsheet
+# in that folder not used by another view, one file per category. Each view's
+# pins use that view's logo from site/logos.
 
 import json
 import math
@@ -29,7 +30,6 @@ BOUNDARY_PATH = ROOT / "data" / "edmonton_boundary.geojson"
 OUTPUT_PATH = ROOT / "site" / "data" / "map_data.json"
 LOGO_DIR = ROOT / "site" / "logos"
 SPREADSHEET_EXTENSIONS = [".xlsx", ".xls", ".csv"]
-LOGO_EXTENSIONS = [".svg", ".png", ".jpg", ".jpeg", ".webp"]
 
 OPEN_DATA = "https://data.edmonton.ca"
 BOUNDARY_SEARCH = "corporate boundary"
@@ -48,18 +48,20 @@ COLUMN_ALIASES = {
     "rating": ["rating"],
     "reviews": ["reviews", "reviewcount"],
     "url": ["url", "link", "mapsurl"],
-    "logo": ["logo", "logofile", "icon"],
 }
 REQUIRED = ["name", "type", "lat", "lon"]
 
 # ── 1: READ SPREADSHEETS ─────────────────────────────────────────────────────
 
+def spreadsheets(folder, pattern="*"):
+    return sorted(p for p in folder.glob(pattern)
+                  if p.suffix.lower() in SPREADSHEET_EXTENSIONS and not p.name.startswith("~$"))
+
+
 def find_input(prefix):
     """Return the single spreadsheet whose name starts with <prefix>
     (so 'area_amenities.xlsx', 'area_amenities_.csv' etc. all match)."""
-    folder, stem = (ROOT / prefix).parent, Path(prefix).name
-    matches = sorted(p for p in folder.glob(f"{stem}*")
-                     if p.suffix.lower() in SPREADSHEET_EXTENSIONS)
+    matches = spreadsheets((ROOT / prefix).parent, f"{Path(prefix).name}*")
     if not matches:
         sys.exit(f"ERROR: no spreadsheet found for {prefix}* "
                  f"(expected one of {', '.join(SPREADSHEET_EXTENSIONS)})")
@@ -67,6 +69,21 @@ def find_input(prefix):
         sys.exit(f"ERROR: several spreadsheets for {prefix}*: "
                  f"{', '.join(m.name for m in matches)} — keep only one")
     return matches[0]
+
+
+def find_inputs(views):
+    """Return {view key: [spreadsheet paths]}. An input ending in '*' takes every
+    spreadsheet in its folder that no other view uses."""
+    inputs = {k: [find_input(v["input"])] for k, v in views.items()
+              if not v["input"].endswith("*")}
+    claimed = {p for paths in inputs.values() for p in paths}
+    for key, v in views.items():
+        if v["input"].endswith("*"):
+            paths = [p for p in spreadsheets((ROOT / v["input"]).parent) if p not in claimed]
+            if not paths:
+                sys.exit(f"ERROR: no spreadsheets found for {v['label']} in {v['input']}")
+            inputs[key] = paths
+    return inputs
 
 
 def read_sheets(path):
@@ -193,22 +210,13 @@ def distance_km(lat1, lon1, lat2, lon2):
          * math.sin((lon2 - lon1) * rad / 2) ** 2)
     return 2 * 6371 * math.asin(math.sqrt(h))
 
-def load_logos(placeholder):
-    """Return {normalized file name: file name} for the images in site/logos,
-    so 'Empire Metal & Recycling Ltd..png' matches the company of that name."""
-    if not LOGO_DIR.is_dir():
-        return {}
-    return {normalize(p.stem): p.name for p in sorted(LOGO_DIR.iterdir())
-            if p.suffix.lower() in LOGO_EXTENSIONS and p.name != placeholder}
-
 # ── 4: BUILD ─────────────────────────────────────────────────────────────────
 
-def build_view(view_cfg, base, city, logos):
-    path = find_input(view_cfg["input"])
+def build_view(view_cfg, paths, base, city):
     points, seen = [], set()
-    no_coords, outside, missing_logos, dupes = [], [], [], 0
+    no_coords, outside, dupes = [], [], 0
 
-    for sheet, df in read_sheets(path).items():
+    for path, sheet, df in ((p, s, df) for p in paths for s, df in read_sheets(p).items()):
         cols = map_columns(df, f"{path.name} / sheet '{sheet}'")
         get = lambda row, field: str(row[cols[field]]).strip() if field in cols else ""
         for i, row in df.iterrows():
@@ -218,7 +226,7 @@ def build_view(view_cfg, base, city, logos):
             lat, lon = to_float(get(row, "lat")), to_float(get(row, "lon"))
             if lat is None or lon is None:
                 # Name left out of the log: stray rows here can hold personal data
-                no_coords.append(f"'{sheet}' row {i + 2}")
+                no_coords.append(f"{path.name} '{sheet}' row {i + 2}")
                 continue
             key = (name.lower(), round(lat, 5), round(lon, 5))
             if key in seen:
@@ -227,7 +235,7 @@ def build_view(view_cfg, base, city, logos):
             seen.add(key)
             km = distance_km(base["lat"], base["lon"], lat, lon)
             if not point_in_polygons(lon, lat, city):
-                outside.append(f"'{sheet}' row {i + 2}: {name} ({km:,.1f} km from base)")
+                outside.append(f"{path.name} '{sheet}' row {i + 2}: {name} ({km:,.1f} km from base)")
                 continue
 
             url = get(row, "url")
@@ -242,42 +250,36 @@ def build_view(view_cfg, base, city, logos):
             place_id = re.search(r"!19s(ChIJ[\w-]+)", url)
             if place_id:
                 point["place_id"] = place_id.group(1)
-
-            # Logo: named in a Logo column, or a file in site/logos named after the place
-            logo = get(row, "logo")
-            if logo and not (LOGO_DIR / logo).is_file():
-                missing_logos.append(f"'{sheet}' row {i + 2}: {name} -> logos/{logo}")
-                logo = ""
-            logo = logo or logos.get(normalize(name), "")
-            if logo:
-                point["logo"] = logo
             points.append(point)
 
     points.sort(key=lambda p: p["km"])
-    with_logo = sum("logo" in p for p in points)
-    print(f"{view_cfg['label']}: {path.name} -> {len(points)} pins in Edmonton "
-          f"({dupes} duplicates merged, {with_logo} with a logo)")
-    for label, rows in (("no coordinates", no_coords), ("outside Edmonton", outside),
-                        ("a Logo file that is not in site/logos", missing_logos)):
+    print(f"{view_cfg['label']}: {', '.join(p.name for p in paths)} -> {len(points)} pins "
+          f"in Edmonton ({dupes} duplicates merged)")
+    for label, rows in (("no coordinates", no_coords), ("outside Edmonton", outside)):
         if rows:
             print(f"  skipped {len(rows)} row(s) with {label}:")
             for r in rows:
                 print(f"    - {r}")
-    return {"label": view_cfg["label"], "points": points}
+    view = {"label": view_cfg["label"], "points": points}
+    logo = view_cfg.get("logo")
+    if logo and (LOGO_DIR / logo).is_file():
+        view["logo"] = logo
+    elif logo:
+        print(f"  WARNING: logo site/logos/{logo} not found; this view uses coloured dots")
+    return view
 
 
 def main():
     config = json.loads(CONFIG_PATH.read_text())
     base = config["base"]
     city = load_boundary(base)
-    logo_cfg = config.get("logos", {})
-    logos = load_logos(logo_cfg.get("placeholder", ""))
-    views = {key: build_view(cfg, base, city, logos) for key, cfg in config["views"].items()}
+    inputs = find_inputs(config["views"])
+    views = {key: build_view(cfg, inputs[key], base, city)
+             for key, cfg in config["views"].items()}
 
     data = {"title": config["title"], "base": base,
             "radius_options_km": config["radius_options_km"],
-            "default_radius_km": config["default_radius_km"],
-            "logos": logo_cfg, "views": views}
+            "default_radius_km": config["default_radius_km"], "views": views}
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_PATH.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n")
     print(f"Wrote {OUTPUT_PATH.relative_to(ROOT)}")

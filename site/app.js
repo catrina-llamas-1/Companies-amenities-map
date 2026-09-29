@@ -33,11 +33,34 @@ const BASEMAPS = {
       attribution: "Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community",
     }),
 };
+const SATELLITE = "Satellite (Esri)";
 const BASEMAP_KEY = "basemap";
+
+// Road and place names drawn over the satellite imagery
+const ESRI_REFERENCE = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference";
+const SATELLITE_LABELS = L.layerGroup([
+  L.tileLayer(`${ESRI_REFERENCE}/World_Transportation/MapServer/tile/{z}/{y}/{x}`,
+    { maxNativeZoom: 19, maxZoom: 20 }),
+  L.tileLayer(`${ESRI_REFERENCE}/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}`,
+    { maxNativeZoom: 19, maxZoom: 20 }),
+]);
+let lastStreetMap = Object.keys(BASEMAPS)[0];
+
+// Keep the satellite labels, the Map/Satellite buttons and the saved choice in step
+function afterBasemapChange(name) {
+  const satellite = name === SATELLITE;
+  if (satellite) SATELLITE_LABELS.addTo(map); else map.removeLayer(SATELLITE_LABELS);
+  if (!satellite) lastStreetMap = name;
+  document.querySelectorAll("#basemap-toggle button").forEach((b) => {
+    b.setAttribute("aria-pressed", String((b.dataset.mode === "satellite") === satellite));
+  });
+  try { localStorage.setItem(BASEMAP_KEY, name); } catch (e) { /* storage unavailable */ }
+}
 
 function useBasemap(name) {
   Object.values(BASEMAPS).forEach((layer) => map.removeLayer(layer));
   BASEMAPS[name].addTo(map);
+  afterBasemapChange(name);
 }
 
 function setupBasemaps() {
@@ -46,9 +69,11 @@ function setupBasemaps() {
   try { saved = localStorage.getItem(BASEMAP_KEY); } catch (e) { /* storage unavailable */ }
   useBasemap(names.includes(saved) ? saved : names[0]);
   L.control.layers(BASEMAPS, null, { position: "topleft" }).addTo(map);
+  map.on("baselayerchange", (e) => afterBasemapChange(e.name));
 
-  map.on("baselayerchange", (e) => {
-    try { localStorage.setItem(BASEMAP_KEY, e.name); } catch (err) { /* ignore */ }
+  document.querySelectorAll("#basemap-toggle button").forEach((b) => {
+    b.addEventListener("click", () =>
+      useBasemap(b.dataset.mode === "satellite" ? SATELLITE : lastStreetMap));
   });
 
   // Fallback: a map whose first tiles all fail is swapped for the next one
@@ -110,40 +135,27 @@ function popupHtml(p) {
       `&query_place_id=${encodeURIComponent(p.place_id)}" target="_blank" rel="noopener">` +
       `Open in Google Maps</a></p>`
     : "";
-  const logo = p.logo ? `<img class="logo" src="logos/${encodeURIComponent(p.logo)}" alt="" onerror="this.remove()">` : "";
-  return `<div class="popup">${logo}<h3>${escapeHtml(p.name)}</h3>` +
+  return `<div class="popup"><h3>${escapeHtml(p.name)}</h3>` +
          `<p class="muted">${escapeHtml(p.type)}</p>` +
          (p.address ? `<p>${escapeHtml(p.address)}</p>` : "") + rating +
          `<p class="muted">${formatKm(p.km)} from ${escapeHtml(base.name)}</p>${link}</div>`;
 }
 
-// Logo pins: images from site/logos, framed in the place's type colour.
-// A missing or broken image falls back to the placeholder.
-function placeholderSrc() {
-  const file = (state.data.logos || {}).placeholder || "placeholder.svg";
-  return `logos/${encodeURIComponent(file)}`;
-}
-
-function logoSrc(p) {
-  if (p.logo) return `logos/${encodeURIComponent(p.logo)}`;
-  return (state.data.logos || {}).placeholder_for_all ? placeholderSrc() : null;
-}
-
+// Logo pins: each view's logo from site/logos (config.json "logo"), framed in
+// the place's type colour. A view without a logo uses coloured dots.
 function logoIcon(src, color) {
-  const fallback = escapeHtml(placeholderSrc());
   return L.divIcon({
     className: "",
     html: `<div class="logo-pin" style="border-color:${color}">` +
-          `<img src="${escapeHtml(src)}" alt="" ` +
-          `onerror="this.onerror=null;this.src='${fallback}'"></div>`,
+          `<img src="${escapeHtml(src)}" alt="" onerror="this.remove()"></div>`,
     iconSize: [LOGO_SIZE, LOGO_SIZE],
     iconAnchor: [LOGO_SIZE / 2, LOGO_SIZE / 2],
   });
 }
 
 function setupView(key, view) {
+  const logo = view.logo ? `logos/${encodeURIComponent(view.logo)}` : null;
   const items = view.points.map((p) => {
-    const logo = logoSrc(p);
     const marker = logo
       ? L.marker([p.lat, p.lon], { icon: logoIcon(logo, OTHER_COLOR) })
       : L.circleMarker([p.lat, p.lon], {

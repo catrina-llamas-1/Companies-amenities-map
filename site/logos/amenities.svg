@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Placeholder logo for Area Amenities pins (banks, gas stations, grocery,
+       malls, restaurants...). Replace this file with your own image (same
+       name), or change "logo" for the view in config.json. -->
+  <rect width="64" height="64" rx="12" fill="#f6ede4"/>
+  <g fill="#b5541c">
+    <path d="M12 26l4-12h32l4 12z"/>
+    <rect x="15" y="29" width="34" height="23" rx="1"/>
+  </g>
+  <g fill="#f6ede4">
+    <path d="M12 26a5 5 0 0 0 10 0a5 5 0 0 0 10 0a5 5 0 0 0 10 0a5 5 0 0 0 10 0z" opacity="0.35"/>
+    <rect x="20" y="36" width="10" height="16"/>
+    <rect x="35" y="35" width="10" height="8"/>
+  </g>
+</svg>
