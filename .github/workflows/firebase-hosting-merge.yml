@@ -27,7 +27,7 @@ jobs:
       - name: Check Firebase setup
         id: firebase
         env:
-          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.FIREBASE_SERVICE_ACCOUNT_STONY_PLAIN_RD_COMPANIES_MAP }}
         run: |
           project=$(python -c "import json; print(json.load(open('.firebaserc'))['projects']['default'])")
           if [ -z "$SERVICE_ACCOUNT" ] || [ "$project" = "your-firebase-project-id" ]; then
@@ -42,6 +42,6 @@ jobs:
         if: steps.firebase.outputs.ready == 'true'
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT || secrets.FIREBASE_SERVICE_ACCOUNT_STONY_PLAIN_RD_COMPANIES_MAP }}
           projectId: ${{ steps.firebase.outputs.project }}
           channelId: live

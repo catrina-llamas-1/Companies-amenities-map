@@ -31,17 +31,31 @@ The base point's name and coordinates, the page title, the view names and the di
 
 1. Create a project in the [Firebase console](https://console.firebase.google.com/). Hosting is included on the free Spark plan.
 2. Put its project ID in `.firebaserc` in place of `your-firebase-project-id`.
-3. Connect GitHub so pushes deploy automatically. From a computer with Node.js installed:
+3. Give GitHub permission to deploy by adding a service-account secret. Use either method.
+
+   **Option A (recommended): Firebase CLI.** Run this from [Google Cloud Shell](https://shell.cloud.google.com) or any computer with Node.js:
 
    ```bash
-   npm install -g firebase-tools
-   firebase login
+   npm install -g firebase-tools    # skip if `firebase --version` already works
+   firebase login                   # in Cloud Shell: firebase login --no-localhost
+   git clone https://github.com/catrina-llamas-1/Companies-amenities-map.git
+   cd Companies-amenities-map
    firebase init hosting:github
    ```
 
-   When asked, choose this repository. Answer **No** to "set up a workflow to run a build script" and **No** to overwriting the existing workflow files. This step creates a service account and saves it as a repository secret. The secret name ends with your project ID (for example `FIREBASE_SERVICE_ACCOUNT_MY_PROJECT`). Either rename it to `FIREBASE_SERVICE_ACCOUNT` in **GitHub → Settings → Secrets and variables → Actions**, or change the secret name in both files under `.github/workflows/`.
+   Answer the prompts as follows:
+   - **Repository:** `catrina-llamas-1/Companies-amenities-map`
+   - **Set up the workflow to run a build script:** No
+   - **Set up automatic deployment when a PR is merged:** No
+   - **Overwrite** any existing file: No
 
-   Alternatively, create the secret by hand. Go to **Firebase console → Project settings → Service accounts → Generate new private key**. Then add a repository secret named `FIREBASE_SERVICE_ACCOUNT` and paste the whole JSON file as its value.
+   This creates a service account with the right permissions and stores it as the GitHub secret `FIREBASE_SERVICE_ACCOUNT_STONY_PLAIN_RD_COMPANIES_MAP`. The workflows already use that name.
+
+   **Option B: by hand.**
+   1. In the [Google Cloud console](https://console.cloud.google.com/iam-admin/serviceaccounts?project=stony-plain-rd-companies-map), go to **IAM & Admin → Service accounts → Create service account**. Give it the roles **Firebase Hosting Admin**, **Cloud Run Viewer** and **API Keys Viewer**.
+   2. Open the new account and go to **Keys → Add key → Create new key → JSON**. A JSON file downloads.
+   3. In GitHub, go to **Settings → Secrets and variables → Actions → New repository secret**. Name it `FIREBASE_SERVICE_ACCOUNT`, paste the whole JSON file as the value, and save.
+   4. Delete the downloaded file afterwards. It's a password for your Firebase project.
 
 ### What happens after setup
 
