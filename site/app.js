@@ -11,6 +11,7 @@ const LABEL_MIN_ZOOM = 15;   // from this zoom, label every pin on screen...
 const FEW_PINS = 60;         // ...below it, only when this few pins are on screen
 const MAX_LABELS = 250;      // cap on labels drawn at once
 const LOGO_SIZE = 30;        // logo pins are this many pixels across
+const BASE_SIZE = 38;        // the base point icon is this many pixels across
 
 const map = L.map("map", { preferCanvas: true, maxZoom: 20 });
 
@@ -92,7 +93,7 @@ function setupBasemaps() {
 setupBasemaps();
 
 const state = {
-  data: null, view: null, views: {}, radiusKm: null, query: "",
+  data: null, view: null, views: {}, radiusKm: null, query: "", rings: true,
   pinLayer: L.layerGroup().addTo(map), labelLayer: L.layerGroup().addTo(map),
   radiusCircle: null,
 };
@@ -109,12 +110,22 @@ function formatKm(km) {
 
 // ── Base point (shared by both views) ────────────────────────────────────────
 
+// The base point uses site/logos/<base.logo> (config.json), or a black diamond
+// if there is none or it fails to load
 function addBase(base) {
-  const icon = L.divIcon({ className: "", html: '<div class="base-marker"></div>',
-                           iconSize: [22, 22], iconAnchor: [11, 11] });
+  const diamond = '<div class="base-marker"></div>';
+  const icon = base.logo
+    ? L.divIcon({
+        className: "",
+        html: `<img class="base-logo" src="logos/${encodeURIComponent(base.logo)}" alt="" ` +
+              `onerror="this.outerHTML='${diamond.replace(/"/g, "&quot;")}'">`,
+        iconSize: [BASE_SIZE, BASE_SIZE], iconAnchor: [BASE_SIZE / 2, BASE_SIZE / 2],
+      })
+    : L.divIcon({ className: "", html: diamond, iconSize: [22, 22], iconAnchor: [11, 11] });
   L.marker([base.lat, base.lon], { icon, zIndexOffset: 1000 })
     .bindTooltip(escapeHtml(base.name), { permanent: true, direction: "top",
-                                          offset: [0, -14], className: "base-label" })
+                                          offset: [0, base.logo ? -BASE_SIZE / 2 - 2 : -14],
+                                          className: "base-label" })
     .bindPopup(`<div class="popup"><h3>${escapeHtml(base.name)}</h3>` +
                `<p class="muted">Base point</p><p>${escapeHtml(base.address || "")}</p></div>`)
     .addTo(map);
@@ -136,13 +147,13 @@ function popupHtml(p) {
       `Open in Google Maps</a></p>`
     : "";
   return `<div class="popup"><h3>${escapeHtml(p.name)}</h3>` +
-         `<p class="muted">${escapeHtml(p.type)}</p>` +
+         `<p class="muted">${escapeHtml(p.type)}${p.source ? ` · ${escapeHtml(p.source)}` : ""}</p>` +
          (p.address ? `<p>${escapeHtml(p.address)}</p>` : "") + rating +
          `<p class="muted">${formatKm(p.km)} from ${escapeHtml(base.name)}</p>${link}</div>`;
 }
 
 // Logo pins: each view's logo from site/logos (config.json "logo"), framed in
-// the place's type colour. A view without a logo uses coloured dots.
+// the place's type colour when rings are on. A view without a logo uses dots.
 function logoIcon(src, color) {
   return L.divIcon({
     className: "",
@@ -153,16 +164,25 @@ function logoIcon(src, color) {
   });
 }
 
+// Colour of a pin's ring (logo pins) or fill (dots): the type colour when rings
+// are shown; otherwise no ring, and dots take their dataset's colour
+function pinColor(it, typeColor) {
+  if (state.rings) return typeColor;
+  return it.logo ? "#fff" : it.datasetColor;
+}
+
 function setupView(key, view) {
-  const logo = view.logo ? `logos/${encodeURIComponent(view.logo)}` : null;
   const items = view.points.map((p) => {
+    // In the combined view each point carries its own logo and colour
+    const file = p.logo !== undefined ? p.logo : view.logo;
+    const logo = file ? `logos/${encodeURIComponent(file)}` : null;
     const marker = logo
       ? L.marker([p.lat, p.lon], { icon: logoIcon(logo, OTHER_COLOR) })
       : L.circleMarker([p.lat, p.lon], {
           radius: 7, color: "#fff", weight: 1.5, fillColor: OTHER_COLOR, fillOpacity: 0.9,
         });
     return {
-      p, logo, marker, color: OTHER_COLOR,
+      p, logo, marker, color: OTHER_COLOR, datasetColor: p.color || view.color || OTHER_COLOR,
       group: OTHER,
       labelOffset: logo ? -(LOGO_SIZE / 2 + 2) : -6,
       search: `${p.name} ${p.type} ${p.address}`.toLowerCase(),
@@ -192,7 +212,7 @@ function assignColors() {
   v.counts = {};
   v.items.forEach((it) => {
     it.group = it.p.type in v.colors ? it.p.type : OTHER;
-    const color = v.colors[it.group];
+    const color = pinColor(it, v.colors[it.group]);
     if (color === it.color) return;
     it.color = color;
     if (it.logo) it.marker.setIcon(logoIcon(it.logo, color));
@@ -263,6 +283,26 @@ function fitToRadius() {
   map.fitBounds(L.latLng(lat, lon).toBounds(state.radiusKm * 2000), { padding: [20, 20] });
 }
 
+// Print / PDF: hide the controls, let the map fill the page, wait for the
+// map tiles at the new size, then open the browser's print dialog
+function printMap() {
+  document.body.classList.add("printing");
+  map.invalidateSize();
+  let done = false;
+  const go = () => {
+    if (done) return;
+    done = true;
+    window.print();
+  };
+  Object.values(BASEMAPS).forEach((layer) => { if (map.hasLayer(layer)) layer.once("load", go); });
+  setTimeout(go, 2500);
+}
+
+window.addEventListener("afterprint", () => {
+  document.body.classList.remove("printing");
+  map.invalidateSize();
+});
+
 function setRadius(km, fit = true) {
   state.radiusKm = km;
   state.radiusCircle.setRadius(km * 1000);
@@ -325,6 +365,16 @@ async function init() {
     timer = setTimeout(() => { state.query = e.target.value.trim().toLowerCase(); draw(); }, 150);
   });
   $("show-labels").addEventListener("change", drawLabels);
+  $("show-radius").addEventListener("change", (e) => {
+    if (e.target.checked) state.radiusCircle.addTo(map); else map.removeLayer(state.radiusCircle);
+  });
+  $("show-rings").addEventListener("change", (e) => {
+    state.rings = e.target.checked;
+    document.body.classList.toggle("no-rings", !state.rings);
+    assignColors();
+    draw();
+  });
+  $("print").addEventListener("click", printMap);
   if (window.matchMedia("(max-width: 600px)").matches) $("legend-box").open = false;
   map.on("moveend", drawLabels);
   window.addEventListener("hashchange", () => showView(location.hash.slice(1)));

@@ -60,6 +60,18 @@ body { display: flex; flex-direction: column; }
 
 .toggle { font-size: 14px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
 
+.button {
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+}
+.button:hover { border-color: var(--accent); color: var(--accent); }
+
 #map { flex: 1; min-height: 0; }
 
 /* Legend */
@@ -128,6 +140,18 @@ body { display: flex; flex-direction: column; }
 }
 .logo-pin img { display: block; width: 100%; height: 100%; object-fit: contain; }
 
+/* Base point icon (site/logos/base.svg) */
+.base-logo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5));
+}
+
+/* Rings hidden: white frame on logo pins, no colour swatches in the legend */
+.no-rings .legend .swatch:not(.base) { display: none; }
+
 /* Base point marker */
 .base-marker {
   width: 22px;
@@ -149,4 +173,18 @@ body { display: flex; flex-direction: column; }
   .topbar h1 { width: 100%; font-size: 15px; }
   .controls input[type="search"] { width: 150px; }
   .legend { right: 8px; bottom: 20px; min-width: 150px; max-height: 35vh; }
+}
+
+/* Print / PDF: only the map (and the tile credits), filling the page */
+@page { size: landscape; margin: 8mm; }
+body.printing .topbar,
+body.printing .legend,
+body.printing .leaflet-control-zoom,
+body.printing .leaflet-control-layers { display: none !important; }
+body.printing #map { position: fixed; inset: 0; }
+@media print {
+  .topbar, .legend, .leaflet-control-zoom, .leaflet-control-layers { display: none !important; }
+  html, body { height: 100%; }
+  #map { position: fixed; inset: 0; }
+  .leaflet-popup-pane { display: none; }
 }
