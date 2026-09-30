@@ -114,17 +114,21 @@ function formatKm(km) {
 // if there is none or it fails to load
 function addBase(base) {
   const diamond = '<div class="base-marker"></div>';
+  const [anchorX, anchorY] = base.anchor || [0.5, 0.5];
   const icon = base.logo
     ? L.divIcon({
         className: "",
         html: `<img class="base-logo" src="logos/${encodeURIComponent(base.logo)}" alt="" ` +
               `onerror="this.outerHTML='${diamond.replace(/"/g, "&quot;")}'">`,
-        iconSize: [BASE_SIZE, BASE_SIZE], iconAnchor: [BASE_SIZE / 2, BASE_SIZE / 2],
+        iconSize: [BASE_SIZE, BASE_SIZE],
+        // base.anchor: where on the icon the address is, as fractions of its
+        // width and height ([0.5, 0.5] = centre; a map pin's tip is near the bottom)
+        iconAnchor: [BASE_SIZE * anchorX, BASE_SIZE * anchorY],
       })
     : L.divIcon({ className: "", html: diamond, iconSize: [22, 22], iconAnchor: [11, 11] });
   L.marker([base.lat, base.lon], { icon, zIndexOffset: 1000 })
     .bindTooltip(escapeHtml(base.name), { permanent: true, direction: "top",
-                                          offset: [0, base.logo ? -BASE_SIZE / 2 - 2 : -14],
+                                          offset: [0, base.logo ? -BASE_SIZE * anchorY - 2 : -14],
                                           className: "base-label" })
     .bindPopup(`<div class="popup"><h3>${escapeHtml(base.name)}</h3>` +
                `<p class="muted">Base point</p><p>${escapeHtml(base.address || "")}</p></div>`)

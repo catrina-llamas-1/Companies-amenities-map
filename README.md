@@ -14,7 +14,7 @@ The map has these controls:
 - **Search:** filters pins by name, type or address.
 - **Legend:** the 10 most common types within the chosen radius get their own colour, and the rest are grouped as "Other types". Untick a type to hide it.
 - **Base map:** the **Map / Satellite** buttons at the top switch between the street map and satellite imagery, which is overlaid with road and place names. The layers button under the zoom controls also offers Street (OpenStreetMap), Street (Esri) and Satellite (Esri). None of these needs an API key. The page remembers the last choice, and if a map's tiles fail to load it switches to the next one automatically.
-- **Logo pins:** Industrial Companies pins show `site/logos/industrial.svg` (colour `#3a4458`), Area Amenities pins show `site/logos/amenities.svg` (colour `#55489d`), and the base point shows `site/logos/base.svg`. All three are placeholders; see [`site/logos/README.md`](site/logos/README.md) to replace them.
+- **Logo pins:** Industrial Companies pins show `site/logos/industrial.svg` (colour `#7e9cd1`), Area Amenities pins show `site/logos/amenities.svg` (colour `#4db595`), and the base point shows `site/logos/base.svg`. All three are placeholders; see [`site/logos/README.md`](site/logos/README.md) to replace them.
 - **Rings:** each pin is framed in its category's colour from the legend. The **Rings** checkbox shows or hides these rings.
 - **Print / PDF:** prints the map on its own, without the top bar, legend or map buttons. Choose "Save as PDF" in the print dialog to get a file. Set up the view first, including labels, rings, radius and satellite.
 - **Popups:** clicking a pin shows its type, address, rating, distance from the base point and a Google Maps link.
