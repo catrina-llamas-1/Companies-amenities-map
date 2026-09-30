@@ -3,7 +3,7 @@
        malls, restaurants...). Replace this file with your own image (same
        name), or change "logo" for the view in config.json. -->
   <rect width="64" height="64" rx="12" fill="#ebe9f4"/>
-  <g fill="#55489d">
+  <g fill="#4db595">
     <path d="M12 26l4-12h32l4 12z"/>
     <rect x="15" y="29" width="34" height="23" rx="1"/>
   </g>
