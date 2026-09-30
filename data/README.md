@@ -9,6 +9,6 @@ Upload the map's spreadsheets here:
 
 Required columns: **Name**, **Type**, **Lat**, **Lng**. **Address**, **Rating**, **Reviews** and **URL** are used when present.
 
-Only places inside the City of Edmonton are shown. `edmonton_boundary.geojson`, the official city boundary, is downloaded here automatically by the build.
+Only places within 5 km of the base point (21350 Stony Plain Rd) are shown; rows farther away can stay in the files and are simply left off the map.
 
 To upload on GitHub, open this folder and choose **Add file → Upload files**.

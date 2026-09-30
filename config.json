@@ -18,13 +18,11 @@
       "logo": "amenities.svg"
     }
   },
+  "max_distance_km": 5,
   "radius_options_km": [
     1,
     2.5,
-    5,
-    10,
-    25,
-    50
+    5
   ],
   "default_radius_km": 5
 }
