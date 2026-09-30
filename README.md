@@ -1,19 +1,22 @@
 # Companies & Amenities Map
 
-An interactive web map with two views around the base point **21350 Stony Plain Rd, Edmonton**:
+An interactive web map with three views around the base point **21350 Stony Plain Rd, Edmonton**:
 
 - **Industrial Companies**: from `data/industrial_companies.xlsx`
 - **Area Amenities**: from every other spreadsheet in `data/`, one file per category (e.g. `Bank.xlsx`, `Gas Station.xlsx`, `Grocery.xlsx`, `Mall.xlsx`, `Restaurant.xlsx`)
+- **All**: both of the above together, each keeping its own logo
 
 Pins are plotted from each row's Lat/Lng and labelled with the place's **name**. Labels appear whenever 60 or fewer pins are on screen, or at street-level zoom.
 
 The map has these controls:
-- **Views:** the two buttons at the top switch views. Each view has its own link (`…/#companies`, `…/#amenities`).
-- **Distance:** the drop-down narrows pins to 1, 2.5 or 5 km around the base point and draws that radius as a dashed circle.
+- **Views:** the buttons at the top switch views. Each view has its own link (`…/#companies`, `…/#amenities`, `…/#all`).
+- **Distance:** the drop-down narrows pins to 1, 2.5 or 5 km around the base point and draws that radius as a dashed circle. The **Radius** checkbox shows or hides the circle.
 - **Search:** filters pins by name, type or address.
 - **Legend:** the 10 most common types within the chosen radius get their own colour, and the rest are grouped as "Other types". Untick a type to hide it.
 - **Base map:** the **Map / Satellite** buttons at the top switch between the street map and satellite imagery, which is overlaid with road and place names. The layers button under the zoom controls also offers Street (OpenStreetMap), Street (Esri) and Satellite (Esri). None of these needs an API key. The page remembers the last choice, and if a map's tiles fail to load it switches to the next one automatically.
-- **Logo pins:** Industrial Companies pins show `site/logos/industrial.svg` and Area Amenities pins show `site/logos/amenities.svg`, each framed in the type colour. Both are placeholders; see [`site/logos/README.md`](site/logos/README.md) to replace them.
+- **Logo pins:** Industrial Companies pins show `site/logos/industrial.svg` (colour `#3a4458`), Area Amenities pins show `site/logos/amenities.svg` (colour `#55489d`), and the base point shows `site/logos/base.svg`. All three are placeholders; see [`site/logos/README.md`](site/logos/README.md) to replace them.
+- **Rings:** each pin is framed in its category's colour from the legend. The **Rings** checkbox shows or hides these rings.
+- **Print / PDF:** prints the map on its own, without the top bar, legend or map buttons. Choose "Save as PDF" in the print dialog to get a file. Set up the view first, including labels, rings, radius and satellite.
 - **Popups:** clicking a pin shows its type, address, rating, distance from the base point and a Google Maps link.
 
 ## Updating the data

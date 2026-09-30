@@ -11,7 +11,8 @@
 # max_distance_km (config.json) of the base point are kept.
 # A view whose "input" ends in "*" (the amenities view) reads every spreadsheet
 # in that folder not used by another view, one file per category. Each view's
-# pins use that view's logo from site/logos.
+# pins use that view's logo and colour. A view with "combine" (the "All" view)
+# shows the points of the listed views together, each keeping its own logo.
 
 import json
 import math
@@ -63,6 +64,7 @@ def find_input(prefix):
 def find_inputs(views):
     """Return {view key: [spreadsheet paths]}. An input ending in '*' takes every
     spreadsheet in its folder that no other view uses."""
+    views = {k: v for k, v in views.items() if "input" in v}
     inputs = {k: [find_input(v["input"])] for k, v in views.items()
               if not v["input"].endswith("*")}
     claimed = {p for paths in inputs.values() for p in paths}
@@ -169,13 +171,32 @@ def build_view(view_cfg, paths, base, max_km):
     if too_far:
         # Summarised: far rows are expected, since the sheets cover a wide area
         print(f"  left out {len(too_far)} row(s) more than {max_km:g} km from the base")
-    view = {"label": view_cfg["label"], "points": points}
-    logo = view_cfg.get("logo")
-    if logo and (LOGO_DIR / logo).is_file():
+    view = {"label": view_cfg["label"], "color": view_cfg.get("color", "#8c8c8c"),
+            "points": points}
+    logo = checked_logo(view_cfg.get("logo"), f"{view_cfg['label']} pins")
+    if logo:
         view["logo"] = logo
-    elif logo:
-        print(f"  WARNING: logo site/logos/{logo} not found; this view uses coloured dots")
     return view
+
+
+def checked_logo(logo, what):
+    """Return the logo file name if it exists in site/logos, else warn and return None."""
+    if logo and (LOGO_DIR / logo).is_file():
+        return logo
+    if logo:
+        print(f"  WARNING: logo site/logos/{logo} not found; {what} will use the default marker")
+    return None
+
+
+def combine_views(view_cfg, views):
+    """Merge the points of other views; each point keeps its source's logo and colour."""
+    points = [{**p, "logo": views[k].get("logo"), "color": views[k]["color"],
+               "source": views[k]["label"]}
+              for k in view_cfg["combine"] for p in views[k]["points"]]
+    points.sort(key=lambda p: p["km"])
+    print(f"{view_cfg['label']}: {len(points)} pins from "
+          f"{', '.join(views[k]['label'] for k in view_cfg['combine'])}")
+    return {"label": view_cfg["label"], "points": points}
 
 
 def main():
@@ -183,7 +204,11 @@ def main():
     base = config["base"]
     inputs = find_inputs(config["views"])
     views = {key: build_view(cfg, inputs[key], base, config["max_distance_km"])
+             for key, cfg in config["views"].items() if "combine" not in cfg}
+    # Keep the order views are listed in config.json (it sets the button order)
+    views = {key: combine_views(cfg, views) if "combine" in cfg else views[key]
              for key, cfg in config["views"].items()}
+    base = {**base, "logo": checked_logo(base.get("logo"), "the base point")}
 
     data = {"title": config["title"], "base": base,
             "radius_options_km": config["radius_options_km"],
