@@ -13,20 +13,11 @@
     "cleanUrls": true,
     "headers": [
       {
-        "source": "/data/**",
+        "source": "**",
         "headers": [
           {
             "key": "Cache-Control",
             "value": "no-cache"
-          }
-        ]
-      },
-      {
-        "source": "**/*.@(js|css)",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "max-age=300"
           }
         ]
       }

@@ -118,7 +118,7 @@ function addBase(base) {
   const icon = base.logo
     ? L.divIcon({
         className: "",
-        html: `<img class="base-logo" src="logos/${encodeURIComponent(base.logo)}" alt="" ` +
+        html: `<img class="base-logo" src="${escapeHtml(base.logo)}" alt="" ` +
               `onerror="this.outerHTML='${diamond.replace(/"/g, "&quot;")}'">`,
         iconSize: [BASE_SIZE, BASE_SIZE],
         // base.anchor: where on the icon the address is, as fractions of its
@@ -177,9 +177,9 @@ function pinColor(it, typeColor) {
 
 function setupView(key, view) {
   const items = view.points.map((p) => {
-    // In the combined view each point carries its own logo and colour
-    const file = p.logo !== undefined ? p.logo : view.logo;
-    const logo = file ? `logos/${encodeURIComponent(file)}` : null;
+    // Logo URLs come from the build (versioned, e.g. logos/industrial.svg?v=...).
+    // In the combined view each point carries its own logo and colour.
+    const logo = (p.logo !== undefined ? p.logo : view.logo) || null;
     const marker = logo
       ? L.marker([p.lat, p.lon], { icon: logoIcon(logo, OTHER_COLOR) })
       : L.circleMarker([p.lat, p.lon], {

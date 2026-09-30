@@ -14,10 +14,12 @@
 # pins use that view's logo and colour. A view with "combine" (the "All" view)
 # shows the points of the listed views together, each keeping its own logo.
 
+import hashlib
 import json
 import math
 import re
 import sys
+import urllib.parse
 from pathlib import Path
 
 import pandas as pd
@@ -180,9 +182,13 @@ def build_view(view_cfg, paths, base, max_km):
 
 
 def checked_logo(logo, what):
-    """Return the logo file name if it exists in site/logos, else warn and return None."""
-    if logo and (LOGO_DIR / logo).is_file():
-        return logo
+    """Return the logo's URL if the file exists in site/logos, else warn and return None.
+    The URL carries a fingerprint of the file, so browsers fetch a replaced logo
+    instead of showing a cached copy of the old one."""
+    path = LOGO_DIR / logo if logo else None
+    if path and path.is_file():
+        version = hashlib.sha1(path.read_bytes()).hexdigest()[:10]
+        return f"logos/{urllib.parse.quote(logo)}?v={version}"
     if logo:
         print(f"  WARNING: logo site/logos/{logo} not found; {what} will use the default marker")
     return None
