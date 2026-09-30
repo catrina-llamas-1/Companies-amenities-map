@@ -7,9 +7,8 @@
 #
 # Each spreadsheet needs Name, Type, Lat and Lng columns (Address, Rating,
 # Reviews and URL are used when present). Every sheet in a workbook is read and
-# duplicate rows (same name and coordinates) are merged. Only places inside the
-# City of Edmonton boundary are kept; the boundary is downloaded from the City's
-# open data portal on first run and saved to data/edmonton_boundary.geojson.
+# duplicate rows (same name and coordinates) are merged. Only places within
+# max_distance_km (config.json) of the base point are kept.
 # A view whose "input" ends in "*" (the amenities view) reads every spreadsheet
 # in that folder not used by another view, one file per category. Each view's
 # pins use that view's logo from site/logos.
@@ -18,25 +17,15 @@ import json
 import math
 import re
 import sys
-import urllib.parse
-import urllib.request
 from pathlib import Path
 
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = ROOT / "config.json"
-BOUNDARY_PATH = ROOT / "data" / "edmonton_boundary.geojson"
 OUTPUT_PATH = ROOT / "site" / "data" / "map_data.json"
 LOGO_DIR = ROOT / "site" / "logos"
 SPREADSHEET_EXTENSIONS = [".xlsx", ".xls", ".csv"]
-
-OPEN_DATA = "https://data.edmonton.ca"
-BOUNDARY_SEARCH = "corporate boundary"
-BOUNDARY_HELP = (
-    "Download the boundary by hand: on data.edmonton.ca search for "
-    "'City of Edmonton - Corporate Boundary', choose Export -> GeoJSON, and "
-    f"upload the file as {BOUNDARY_PATH.relative_to(ROOT)}")
 
 # Accepted header spellings (compared lower-case, ignoring spaces/underscores)
 COLUMN_ALIASES = {
@@ -112,89 +101,7 @@ def map_columns(df, where):
                  f"Headers found: {list(df.columns)}")
     return mapping
 
-# ── 2: CITY OF EDMONTON BOUNDARY ─────────────────────────────────────────────
-
-def fetch_json(url):
-    req = urllib.request.Request(url, headers={"User-Agent": "companies-amenities-map"})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return json.load(r)
-
-
-def boundary_polygons(geojson):
-    """Return a list of polygons, each a list of rings of (lon, lat)."""
-    features = geojson.get("features", [geojson])
-    polygons = []
-    for f in features:
-        geom = f.get("geometry") or {}
-        if geom.get("type") == "Polygon":
-            polygons.append(geom["coordinates"])
-        elif geom.get("type") == "MultiPolygon":
-            polygons.extend(geom["coordinates"])
-    return polygons
-
-
-def point_in_polygons(lon, lat, polygons):
-    """Even-odd ray casting; holes are handled because every ring is counted."""
-    for rings in polygons:
-        inside = False
-        for ring in rings:
-            for (x1, y1), (x2, y2) in zip(ring, ring[1:] + ring[:1]):
-                if (y1 > lat) != (y2 > lat) and lon < x1 + (lat - y1) * (x2 - x1) / (y2 - y1):
-                    inside = not inside
-        if inside:
-            return True
-    return False
-
-
-def download_boundary(base):
-    """Find the Corporate Boundary dataset on data.edmonton.ca and download it."""
-    query = urllib.parse.urlencode({"q": BOUNDARY_SEARCH, "only": "datasets,maps", "limit": 20})
-    results = fetch_json(f"{OPEN_DATA}/api/catalog/v1?{query}")["results"]
-    ids, names = [], {}
-    for r in results:
-        name = r["resource"]["name"]
-        if "corporate boundary" in name.lower():
-            for dataset_id in [r["resource"]["id"], *(r["resource"].get("parent_fxf") or [])]:
-                ids.append(dataset_id)
-                names.setdefault(dataset_id, name)
-    if not ids:
-        raise RuntimeError(f"no 'Corporate Boundary' dataset found on {OPEN_DATA}")
-
-    for dataset_id in dict.fromkeys(ids):
-        for url in (f"{OPEN_DATA}/resource/{dataset_id}.geojson",
-                    f"{OPEN_DATA}/api/geospatial/{dataset_id}?method=export&format=GeoJSON"):
-            try:
-                geojson = fetch_json(url)
-            except Exception as e:
-                print(f"  (tried {url}: {e})")
-                continue
-            polygons = boundary_polygons(geojson)
-            if polygons and point_in_polygons(base["lon"], base["lat"], polygons):
-                lons = [x for rings in polygons for x, _ in rings[0]]
-                lats = [y for rings in polygons for _, y in rings[0]]
-                print(f"  downloaded '{names[dataset_id]}' from {url}: {len(polygons)} polygon(s), "
-                      f"lat {min(lats):.3f}..{max(lats):.3f}, lon {min(lons):.3f}..{max(lons):.3f}")
-                return geojson
-            print(f"  (skipped '{names[dataset_id]}' at {url}: no polygon containing the base point)")
-    raise RuntimeError("could not download a usable boundary")
-
-
-def load_boundary(base):
-    if BOUNDARY_PATH.exists():
-        geojson = json.loads(BOUNDARY_PATH.read_text())
-    else:
-        print("City of Edmonton boundary not found locally, downloading...")
-        try:
-            geojson = download_boundary(base)
-        except Exception as e:
-            sys.exit(f"ERROR: could not get the City of Edmonton boundary ({e}).\n{BOUNDARY_HELP}")
-        BOUNDARY_PATH.write_text(json.dumps(geojson) + "\n")
-    polygons = boundary_polygons(geojson)
-    if not polygons or not point_in_polygons(base["lon"], base["lat"], polygons):
-        sys.exit(f"ERROR: {BOUNDARY_PATH.name} does not contain the base point. {BOUNDARY_HELP}")
-    return polygons
-
-# ── 3: HELPERS ───────────────────────────────────────────────────────────────
+# ── 2: HELPERS ───────────────────────────────────────────────────────────────
 
 def to_float(value):
     try:
@@ -210,11 +117,11 @@ def distance_km(lat1, lon1, lat2, lon2):
          * math.sin((lon2 - lon1) * rad / 2) ** 2)
     return 2 * 6371 * math.asin(math.sqrt(h))
 
-# ── 4: BUILD ─────────────────────────────────────────────────────────────────
+# ── 3: BUILD ─────────────────────────────────────────────────────────────────
 
-def build_view(view_cfg, paths, base, city):
+def build_view(view_cfg, paths, base, max_km):
     points, seen = [], set()
-    no_coords, outside, dupes = [], [], 0
+    no_coords, too_far, dupes = [], [], 0
 
     for path, sheet, df in ((p, s, df) for p in paths for s, df in read_sheets(p).items()):
         cols = map_columns(df, f"{path.name} / sheet '{sheet}'")
@@ -234,8 +141,8 @@ def build_view(view_cfg, paths, base, city):
                 continue
             seen.add(key)
             km = distance_km(base["lat"], base["lon"], lat, lon)
-            if not point_in_polygons(lon, lat, city):
-                outside.append(f"{path.name} '{sheet}' row {i + 2}: {name} ({km:,.1f} km from base)")
+            if km > max_km:
+                too_far.append(f"{path.name} '{sheet}' row {i + 2}: {name} ({km:,.1f} km from base)")
                 continue
 
             url = get(row, "url")
@@ -254,12 +161,14 @@ def build_view(view_cfg, paths, base, city):
 
     points.sort(key=lambda p: p["km"])
     print(f"{view_cfg['label']}: {', '.join(p.name for p in paths)} -> {len(points)} pins "
-          f"in Edmonton ({dupes} duplicates merged)")
-    for label, rows in (("no coordinates", no_coords), ("outside Edmonton", outside)):
-        if rows:
-            print(f"  skipped {len(rows)} row(s) with {label}:")
-            for r in rows:
-                print(f"    - {r}")
+          f"within {max_km:g} km ({dupes} duplicates merged)")
+    if no_coords:
+        print(f"  skipped {len(no_coords)} row(s) with no coordinates:")
+        for r in no_coords:
+            print(f"    - {r}")
+    if too_far:
+        # Summarised: far rows are expected, since the sheets cover a wide area
+        print(f"  left out {len(too_far)} row(s) more than {max_km:g} km from the base")
     view = {"label": view_cfg["label"], "points": points}
     logo = view_cfg.get("logo")
     if logo and (LOGO_DIR / logo).is_file():
@@ -272,9 +181,8 @@ def build_view(view_cfg, paths, base, city):
 def main():
     config = json.loads(CONFIG_PATH.read_text())
     base = config["base"]
-    city = load_boundary(base)
     inputs = find_inputs(config["views"])
-    views = {key: build_view(cfg, inputs[key], base, city)
+    views = {key: build_view(cfg, inputs[key], base, config["max_distance_km"])
              for key, cfg in config["views"].items()}
 
     data = {"title": config["title"], "base": base,

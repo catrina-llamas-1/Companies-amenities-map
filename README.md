@@ -9,7 +9,7 @@ Pins are plotted from each row's Lat/Lng and labelled with the place's **name**.
 
 The map has these controls:
 - **Views:** the two buttons at the top switch views. Each view has its own link (`…/#companies`, `…/#amenities`).
-- **Distance:** the drop-down limits pins to a radius around the base point (1–50 km, default 5 km) and draws that radius as a dashed circle.
+- **Distance:** the drop-down narrows pins to 1, 2.5 or 5 km around the base point and draws that radius as a dashed circle.
 - **Search:** filters pins by name, type or address.
 - **Legend:** the 10 most common types within the chosen radius get their own colour, and the rest are grouped as "Other types". Untick a type to hide it.
 - **Base map:** the **Map / Satellite** buttons at the top switch between the street map and satellite imagery, which is overlaid with road and place names. The layers button under the zoom controls also offers Street (OpenStreetMap), Street (Esri) and Satellite (Esri). None of these needs an API key. The page remembers the last choice, and if a map's tiles fail to load it switches to the next one automatically.
@@ -22,12 +22,10 @@ The map has these controls:
    - **Industrial Companies:** exactly one file whose name starts with `industrial_companies`.
    - **Area Amenities:** any number of other spreadsheets, one per category. To add a category, upload another file, e.g. `Pharmacy.xlsx`; to remove one, delete its file.
 2. Required columns: **Name**, **Type**, **Lat**, **Lng** ("Latitude" and "Longitude" also work). **Address**, **Rating**, **Reviews** and **URL** (the Google Maps link) are used when present, and other columns are ignored.
-3. Every sheet in a workbook is read. Rows that appear more than once (same name and coordinates) are merged. Rows without coordinates are skipped, and so are rows **outside the City of Edmonton**. Every skipped row is listed in the build log.
-
-   The Edmonton check uses the official City of Edmonton Corporate Boundary. The build downloads it from [data.edmonton.ca](https://data.edmonton.ca) and saves it as `data/edmonton_boundary.geojson`. If the download fails, the build stops rather than include places outside the city. To fix that, open the dataset on data.edmonton.ca, choose **Export → GeoJSON**, and upload the file to `data/` with that name.
+3. Every sheet in a workbook is read. Rows that appear more than once (same name and coordinates) are merged. Only places **within 5 km of the base point** are kept (`max_distance_km` in `config.json`). Rows without coordinates are skipped and listed in the build log, and the log also reports how many rows were too far away.
 4. Commit and push to `main`, and the site redeploys automatically.
 
-The base point's name and coordinates, the page title, the view names and the distance options are set in `config.json`.
+The base point's name and coordinates, the page title, the view names, the 5 km limit and the distance options are set in `config.json`.
 
 ## Deploying to Firebase Hosting
 
